@@ -9,6 +9,7 @@ import networkx as nx
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import pandas as pd
 import py3Dmol
 import os
@@ -20,17 +21,19 @@ df= pd.read_csv('data/mini_dataset_chembl.csv')
 smiles = df['smiles'].tolist()
 mols = [Chem.MolFromSmiles(s) for s in smiles]
 
-color_map_atoms = {
-    'C':  '#AAAAAA', # Grigio 
-    'O':  '#FF4444', # Rosso acceso
-    'N':  '#4444FF', # Blu acceso
-    'S':  '#EEEE00', # Giallo scuro
-    'P':  '#FFA500', # Arancione
-    'F':  '#CCEEFF', # Celeste pallido
-    'Cl': '#00EE00', # Verde brillante
-    'H':  '#FFFFFF'  # Bianco
+
+atom_properties = { # (color, size)
+    'H':  ('#FFFFFF', 40),   
+    'F':  ('#CCEEFF', 170), 
+    'O':  ('#FF4444', 180),  
+    'N':  ('#4444FF', 190),  
+    'C':  ('#AAAAAA', 200), 
+    'Cl': ('#00EE00', 280), 
+    'S':  ('#EEEE00', 290), 
+    'P':  ('#FFA500', 300)   
 }
-default_color_atom = '#FFD700'
+default_atom = ('#00FFCC', 150)
+
 
 def mol_to_3D(mol):
     # Aggiungo idrogeni impliciti per una rappresentazione più completa (necessario per 3D)
@@ -75,7 +78,7 @@ def mol_to_nx(mol):
     # Estraggo le coordinate
     conformer = mol_with_H.GetConformer()
     G = nx.Graph()
-    for atom in mol.GetAtoms():
+    for atom in mol_with_H.GetAtoms():
 
         idx=atom.GetIdx()
         symbol=atom.GetSymbol()
@@ -87,7 +90,7 @@ def mol_to_nx(mol):
                    y=pos.y, 
                    z=pos.z)
 
-    for bond in mol.GetBonds():
+    for bond in mol_with_H.GetBonds():
         bond_type = bond.GetBondTypeAsDouble()
         G.add_edge(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx(), bond_type=bond_type)
         
@@ -101,10 +104,11 @@ def visualize_nx_3D(G):
     for _, data in G.nodes(data=True):
         x, y, z = data['x'], data['y'], data['z']
         element = data['element']
-        color = color_map_atoms.get(element, default_color_atom)
+        color, size = atom_properties.get(element, default_atom)
         
-        ax.scatter(x, y, z, color=color, s=100)
-        ax.text(x, y, z, element, fontsize=8, ha='center', va='center')
+        ax.scatter(x, y, z, color=color, s=size, edgecolors='k', alpha=0.9)
+        if element != 'H':  # Non mostrare etichette per gli idrogeni
+            ax.text(x, y, z, element, fontsize=6, weight='bold', ha='center', va='center', color='black')
     
     for node1, node2, data in G.edges(data=True):
         x1, y1, z1 = G.nodes[node1]['x'], G.nodes[node1]['y'], G.nodes[node1]['z']
@@ -112,11 +116,25 @@ def visualize_nx_3D(G):
         bond= data['bond_type']
         ax.plot([x1, x2], [y1, y2], [z1, z2], color='gray', linewidth=bond*2)
         
+    ax.set_aspect('equal')
+    ax.axis('off')
+    # ax.set_facecolor('yellow')
+    
+    #Legenda
+    mol_elements = set(nx.get_node_attributes(G, 'element').values())
+    legend = []
+    for elem in mol_elements:
+        color, _ = atom_properties.get(elem, default_atom)
+        dot = Line2D([0], [0], marker='o', color='w', label=elem, markerfacecolor=color, markeredgecolor='dimgray', markersize=10)
+        legend.append(dot)
+        
+    ax.legend(handles=legend, title="Atomi", loc="upper left", frameon=True)
+    
     plt.show()
         
 
-for mol in mols[:1]:  
-    mol_to_3D(mol)
+for mol in mols[2:3]:  
+    #mol_to_3D(mol)
     G = mol_to_nx(mol)
     visualize_nx_3D(G)
   
