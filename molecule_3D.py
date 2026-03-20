@@ -11,16 +11,12 @@ matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import pandas as pd
-import py3Dmol
-import os
-import webbrowser
 
 SEED = 104
 
 df= pd.read_csv('data/mini_dataset_chembl.csv')
 smiles = df['smiles'].tolist()
 mols = [Chem.MolFromSmiles(s) for s in smiles]
-
 
 atom_properties = { # (color, size)
     'H':  ('#FFFFFF', 40),   
@@ -34,40 +30,6 @@ atom_properties = { # (color, size)
 }
 default_atom = ('#00FFCC', 150)
 
-
-def mol_to_3D(mol):
-    # Aggiungo idrogeni impliciti per una rappresentazione più completa (necessario per 3D)
-    mol_with_H = Chem.AddHs(mol)
-    #print(f"Smile con idrogeni espliciti : {Chem.MolToSmiles(mol_with_H)}")
-
-    # Genero coordinate 3D e ottimizzo la geometria della molecola
-    AllChem.EmbedMolecule(mol_with_H, randomSeed=SEED)
-    AllChem.MMFFOptimizeMolecule(mol_with_H)
-    #print(f"Smile con idrogeni espliciti ottimizzato : {Chem.MolToSmiles(mol_with_H)}")
-
-    # Estraiamo le coordinate
-    molblock = Chem.MolToMolBlock(mol_with_H)
-
-    # 2. Configurazione del visualizzatore py3Dmol
-    viewer = py3Dmol.view(width=800, height=800)
-    viewer.addModel(molblock, 'mol')
-    viewer.setStyle({'stick': {'radius': 0.15}, 'sphere': {'scale': 0.3}})
-    viewer.zoomTo()
-
-    # Otteniamo il codice HTML generato da py3Dmol
-    html_content = viewer._make_html()
-
-    # Salviamo l'HTML in un file temporaneo locale
-    html_file = "mol_3d_temp.html"
-    with open(html_file, "w") as f:
-        f.write(html_content)
-
-    # Otteniamo il percorso assoluto del file per evitare problemi con il browser
-    abs_path = f"file://{os.path.abspath(html_file)}"
-
-    # Chiediamo a Python di aprire il file nel tuo browser predefinito (Chrome, Firefox, Safari, ecc.)
-    print("3D view opening in the browser...")
-    webbrowser.open(abs_path)
 
 def mol_to_nx(mol):
     #Aggiungo H impliciti e calcolo coordinate 3D 
@@ -98,6 +60,7 @@ def mol_to_nx(mol):
 
 def visualize_nx_3D(G):
     fig= plt.figure(figsize=(15, 15))
+    
     ax= fig.add_subplot(111, projection='3d')
     ax.set_title("Molecule 3D Graph")
     
@@ -118,7 +81,6 @@ def visualize_nx_3D(G):
         
     ax.set_aspect('equal')
     ax.axis('off')
-    # ax.set_facecolor('yellow')
     
     #Legenda
     mol_elements = set(nx.get_node_attributes(G, 'element').values())
