@@ -3,6 +3,12 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+#PDB dtatbase files
+*.pdb
+*.mol2
+*.sdf
+
+
 # C extensions
 *.so
 
