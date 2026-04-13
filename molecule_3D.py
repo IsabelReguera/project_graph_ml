@@ -95,8 +95,8 @@ def visualize_nx_3D(G):
     plt.show()
         
 
-for mol in mols[2:3]:  
-    #mol_to_3D(mol)
-    G = mol_to_nx(mol)
-    visualize_nx_3D(G)
+caffeine_smiles = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
+mol = Chem.MolFromSmiles(caffeine_smiles)
+G = mol_to_nx(mol)
+visualize_nx_3D(G)
   
