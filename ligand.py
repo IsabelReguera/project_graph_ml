@@ -45,6 +45,11 @@ class Ligand:
                 
             AllChem.MMFFOptimizeMolecule(self.mol)
             self._computed_3d = True
+    
+    def get_features(self):
+        """Estrae caratteristiche atomiche e di legame per il grafo."""
+        # implementare l'estrazione di feature specifiche per nodi e archi
+        pass
 
     def mol_to_nx(self):
         self._ensure_3d_coordinates()
@@ -73,9 +78,10 @@ class Ligand:
         # Disegno nodi
         for _, d in G.nodes(data=True):
             color, size = ATOM_PROPERTIES.get(d['element'], DEFAULT_ATOM)
-            ax.scatter(d['x'], d['y'], d['z'], c=color, s=size, edgecolors='k', zorder=5)
+            ax.scatter(d['x'], d['y'], d['z'], c=color, s=size, edgecolors='k', alpha=0.85)
             if d['element'] != 'H':
-                ax.text(d['x'], d['y'], d['z'], d['element'], fontsize=8, ha='center')
+                ax.text(d['x'], d['y'], d['z'], d['element'], 
+                        fontsize=8, ha='center', va='center', color='black', weight='bold')
 
         # Disegno legami
         for u, v, d in G.edges(data=True):
@@ -109,3 +115,4 @@ if __name__ == "__main__":
     caffeine_smiles = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
     ligand = Ligand(smile=caffeine_smiles)
     ligand.visualize_py3Dmol()
+    ligand.visualize_nx_3d()
