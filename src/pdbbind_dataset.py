@@ -33,8 +33,7 @@ class PDBbindHeteroDataset(Dataset):
             # 2. instanziazione di una proteina e di un ligando a partire dal csv
 
 
-            # 3. Creazione del grafo tramite Graphein / RDKit (Logica Custom)
-            # g_protein = construct_protein_graph(pdb_path=pocket_path, config=...)
+            # 3. estrazione di feature, edge_index e pos per proteina e ligando
             # feature_proteina, edge_proteina, pos_proteina = formatta_output(g_protein)
             # feature_ligando, edge_ligando, pos_ligando = elabora_sdf_con_rdkit(ligand_path)
             # edge_bipartiti = calcola_interazioni_entro_5_angstrom(pos_proteina, pos_ligando)
@@ -42,7 +41,7 @@ class PDBbindHeteroDataset(Dataset):
             # 4. Assegnazione in HeteroData
             data = HeteroData()
             
-            # Qui si inseriscono i tensori reali (questa è una simulazione dell'assegnazione)
+            # assegnazione tensori a HeroData
             # data['protein'].x = feature_proteina
             # data['protein'].pos = pos_proteina
             # data['ligand'].x = feature_ligando
@@ -55,7 +54,8 @@ class PDBbindHeteroDataset(Dataset):
             
             # Variabile bersaglio
             data.y = torch.tensor([p_affinity], dtype=torch.float)
-            data.pdb_id = pdb_code # Opzionale, per tracciare il file
+            # codice PDB come metadato
+            data.pdb_id = pdb_code 
 
             # 5. Salvataggio del complesso
             # Se hai filtri applicati con self.pre_filter(data), richiamali qui

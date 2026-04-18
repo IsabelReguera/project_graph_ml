@@ -1,9 +1,9 @@
 import networkx as nx
 import py3Dmol
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from rdkit import Chem
-from rdkit.Chem import AllChem
+from rdkit.Chem import AllChem, rdchem
+import torch
 
 # Spostiamo la configurazione fuori per una facile manutenzione
 ATOM_PROPERTIES = {
@@ -14,25 +14,40 @@ ATOM_PROPERTIES = {
 }
 DEFAULT_ATOM = ('#00FFCC', 150)
 
-class Ligand:
-    def __init__(self, smile=None, sdf_path=None):
-        self.mol = self._load_molecule(smile, sdf_path)
-        self._computed_3d = False
+HYBRIDIZATION = {
+    rdchem.HybridizationType.S:     0,
+    rdchem.HybridizationType.SP:    1,
+    rdchem.HybridizationType.SP2:   2,
+    rdchem.HybridizationType.SP3:   3,
+    rdchem.HybridizationType.SP3D:  4,
+    rdchem.HybridizationType.SP3D2: 5,
+    rdchem.HybridizationType.OTHER: 6,
+}
 
-    def _load_molecule(self, smile, sdf_path):
-        """Metodo privato per il caricamento sicuro."""
-        mol = None
-        if sdf_path:
-            supplier = Chem.SDMolSupplier(sdf_path, sanitize=True)
-            if supplier: mol = supplier[0]
-        elif smile:
-            mol = Chem.MolFromSmiles(smile)
+class Ligand:
+    """Classe per la gestione dei ligandi, con supporto per SMILES e SDF, e visualizzazione 3D/2D."""
+    def __init__(self, mol, is_3d):
+        self.mol = mol
+        self._computed_3d = is_3d
         
-        if mol is None:
-            raise ValueError(f"Errore caricamento: SMILES={smile}, SDF={sdf_path}")
-        
-        mol = Chem.AddHs(mol)
-        return mol
+    @classmethod
+    def from_smile(cls, smiles):
+        """Crea un'istanza di Ligand a partire da una stringa SMILES."""
+        mol = Chem.MolFromSmiles(smiles)
+        if not mol: raise ValueError("SMILES non valido")
+        #mol = Chem.AddHs(mol)
+        return cls(mol, is_3d=False)
+
+    @classmethod
+    def from_sdf(cls, path):
+        """Crea un'istanza di Ligand a partire da un file SDF."""
+        supplier = Chem.SDMolSupplier(path)
+        if not supplier: raise ValueError("SDF non trovato")
+        mol = supplier[0]
+        if mol is None: raise ValueError(f"Molecola non parsabile: {path}")
+        #mol = Chem.AddHs(mol, addCoords=True)
+        return cls(mol, is_3d=True)
+
 
     def _ensure_3d_coordinates(self):
         """Genera coordinate 3D solo se necessario (Lazy Evaluation)."""
@@ -45,11 +60,83 @@ class Ligand:
                 
             AllChem.MMFFOptimizeMolecule(self.mol)
             self._computed_3d = True
+
+    # Mappa ibridazione RDKit → intero
+   
+
+    def _get_node_features(self):
+        """Feature atomiche: 
+            numero atomico -> indicazione dell'elemento chimico
+            grado -> numero di legami con altri atomi (esclusi gli idrogeni)
+            H totali -> numero totale di idrogeni
+            carica formale -> carica elettrica dell'atomo
+            aromaticità -> indica se l'atomo è aromatico
+            anello -> indica se l'atomo fa parte di un anello
+            ibridazione -> tipo di ibridazione dell'atomo (S, SP, SP2, SP3, SP3D, SP3D2, OTHER)
+        """
+        feats = []
+        for atom in self.mol.GetAtoms():
+            feats.append([
+                atom.GetAtomicNum(),
+                atom.GetDegree(),
+                atom.GetTotalNumHs(),
+                atom.GetFormalCharge(),
+                int(atom.GetIsAromatic()),
+                int(atom.IsInRing()),
+                HYBRIDIZATION.get(atom.GetHybridization(), 6),
+            ])
+        return torch.tensor(feats, dtype=torch.float32)
+
+    def _get_edge_index(self):
+        """Costruisce l'edge_index bidirezionale per PyTorch Geometric."""
+        src, dst = [], []
+        for bond in self.mol.GetBonds():
+            start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+            src.extend([start, end])
+            dst.extend([end, start])
+        return torch.tensor([src, dst], dtype=torch.long)
+
+    def _get_edge_features(self):
+        """
+        Feature di legame (bidirezionali): 
+            tipo di legame (singolo=1, doppio=2, triplo=3, aromatico=1.5),
+            coniugazione 
+        """
+        feats = []
+        for bond in self.mol.GetBonds():
+            f = [
+                bond.GetBondTypeAsDouble(),
+                int(bond.GetIsConjugated()),
+            ]
+            feats.extend([f, f])  # bidirezionale: stesso valore in entrambe le direzioni
+        return torch.tensor(feats, dtype=torch.float32)
+
+    def _get_3d_coordinates(self):
+        """Estrae le coordinate 3D degli atomi."""
+        self._ensure_3d_coordinates()
+        conf = self.mol.GetConformer()
+        pos = []
+        for atom in self.mol.GetAtoms():
+            p = conf.GetAtomPosition(atom.GetIdx())
+            pos.append([p.x, p.y, p.z])
+        return torch.tensor(pos, dtype=torch.float32)
+
+    def get_pyg_graph(self):
+        """Restituisce (x, edge_index, edge_attr, pos) pronti per PyTorch Geometric."""
+        x          = self._get_node_features()
+        edge_index = self._get_edge_index()
+        edge_attr  = self._get_edge_features()
+        pos        = self._get_3d_coordinates()
+        return x, edge_index, edge_attr, pos
     
-    def get_features(self):
-        """Estrae caratteristiche atomiche e di legame per il grafo."""
-        # implementare l'estrazione di feature specifiche per nodi e archi
-        pass
+    def to_smile(self):
+        """Restituisce la rappresentazione SMILES del ligando."""
+        return Chem.MolToSmiles(
+            self.mol, 
+            isomericSmiles=True,  # Include @ per centri chirali e / \ per i doppi legami
+            kekuleSmiles=False,   # Mantiene la rappresentazione aromatica (es. 'c1ccccc1')
+            canonical=True        # Garantisce che lo SMILES sia unico per quella struttura
+            )
 
     def mol_to_nx(self):
         self._ensure_3d_coordinates()
@@ -69,7 +156,7 @@ class Ligand:
                        weight=bond.GetBondTypeAsDouble())
         return G
 
-    def visualize_nx_3d(self):
+    def visualize_nx3D(self):
         """Visualizzazione statica con Matplotlib."""
         G = self.mol_to_nx()
         fig = plt.figure(figsize=(10, 8))
@@ -109,10 +196,18 @@ class Ligand:
         else:
             print("!py3Dmol richiede un ambiente Jupyter per la visualizzazione!")
             return
+    def plot_2d(self):
+        """Visualizzazione 2D con RDKit."""
+        from rdkit.Chem import Draw
+        img = Draw.MolToImage(self.mol, size=(300, 300))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.show()
 
 if __name__ == "__main__":
-    # Test con Caffeina (più interessante dell'etanolo per i grafi)
     caffeine_smiles = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
-    ligand = Ligand(smile=caffeine_smiles)
-    ligand.visualize_py3Dmol()
-    ligand.visualize_nx_3d()
+    ligand = Ligand.from_smile(caffeine_smiles)
+    x, edge_index, edge_attr, pos = ligand.get_pyg_graph()
+    print(f"Nodi: {x.shape}  |  Archi: {edge_index.shape}  |  Edge attr: {edge_attr.shape}  |  Pos: {pos.shape}")
+    ligand.visualize_nx3D()
+    
