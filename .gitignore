@@ -11,6 +11,7 @@ __pycache__/
 #Claude files
 *.claude/
 todo.md
+claude.md
 
 # C extensions
 *.so
