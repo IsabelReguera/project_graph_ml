@@ -1,3 +1,4 @@
+cpdb
 torch==2.11.0
 torch_geometric==2.7.0
 graphein==1.7.8

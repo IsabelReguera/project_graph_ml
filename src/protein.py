@@ -50,7 +50,7 @@ class Protein:
         if not os.path.exists(path):
             raise FileNotFoundError(f"File non trovato: {path}")
         else:
-            pdb_code = os.path.basename(path).split('/')[-1].split('_')[0]  # Estrae il codice PDB dal nome del file
+            pdb_code = os.path.basename(path).split('_')[0]  # Estrae il codice PDB dal nome del file
         return cls(pdb_code=pdb_code, pdb_path=path)
 
     @classmethod
@@ -185,9 +185,7 @@ class Protein:
         return view.show()
 
 
-# Esempio di utilizzo
 if __name__ == "__main__":
-    
-    prot = Protein(pdb_code="3pd9")
-    print(f"Informazioni proteina: {prot.get_info()}")
-    print(f"Il grafo ha {len(prot.graph.nodes())} nodi.")
+    prot = Protein.from_pdb_code("3pd9")
+    x, edge_index, edge_attr, pos = prot.get_pyg_graph()
+    print(f"Nodi: {x.shape}  |  Archi: {edge_index.shape}  |  Edge attr: {edge_attr.shape}  |  Pos: {pos.shape}")
