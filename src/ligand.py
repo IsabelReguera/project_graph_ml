@@ -69,9 +69,6 @@ class Ligand:
             AllChem.MMFFOptimizeMolecule(self.mol)
             self._computed_3d = True
 
-    # Mappa ibridazione RDKit → intero
-   
-
     def _get_node_features(self):
         """Feature atomiche: 
             numero atomico -> indicazione dell'elemento chimico

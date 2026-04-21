@@ -5,21 +5,12 @@ from functools import partial
 import torch
 import cpdb
 
-from graphein.protein.config import ProteinGraphConfig, add_peptide_bonds
+from graphein.protein.config import ProteinGraphConfig
 from graphein.protein.graphs import construct_graph
 from graphein.protein.edges.distance import add_peptide_bonds, add_distance_threshold
 from graphein.protein.features.nodes.amino_acid import meiler_embedding
-
 from graphein.protein.visualisation import plotly_protein_structure_graph
-from functools import partial
 import py3Dmol
-
-AMINO_ACIDS = {
-    'ALA': 0, 'ARG': 1, 'ASN': 2, 'ASP': 3, 'CYS': 4,
-    'GLN': 5, 'GLU': 6, 'GLY': 7, 'HIS': 8, 'ILE': 9,
-    'LEU': 10, 'LYS': 11, 'MET': 12, 'PHE': 13, 'PRO': 14,
-    'SER': 15, 'THR': 16, 'TRP': 17, 'TYR': 18, 'VAL': 19
-}
 # funzioni di annotazione nodi 
 node_funcs = [
     meiler_embedding,      # Carica il Meiler Embedding, proprietà chimico-fisiche per ogni aminoacido
