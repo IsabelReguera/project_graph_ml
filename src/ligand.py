@@ -5,6 +5,14 @@ from rdkit import Chem
 from rdkit.Chem import AllChem, rdchem
 import torch
 
+
+
+# Disabilita i log di RDKit (Errori, Warning, Info)
+from rdkit import RDLogger
+logger = RDLogger.logger()
+logger.setLevel(RDLogger.CRITICAL)
+
+
 # Spostiamo la configurazione fuori per una facile manutenzione
 ATOM_PROPERTIES = {
     'H':  ('#FFFFFF', 40),   'F':  ('#CCEEFF', 170), 

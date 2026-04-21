@@ -1,4 +1,4 @@
-PDB_code,resolution,release_year,pAffinity,SMILE
+pdb_code,resolution,release_year,pAffinity,SMILE
 2tpi,2.1,1981-2000,4.3098,CC[C@H](C)[C@H]([NH3+])C(=O)N[C@H](C(=O)[O-])C(C)C
 4tln,2.3,1981-2000,3.7212,CC(C)C[C@H]([NH3+])C(=O)NO
 1rnt,1.9,1981-2000,5.1871,Nc1[nH]c(=O)c2ncn([C@@H]3O[C@H](CO)[C@@H](O)[C@H]3OP(=O)([O-])[O-])c2[nH+]1

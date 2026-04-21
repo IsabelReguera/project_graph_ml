@@ -1,4 +1,4 @@
-PDB_code,resolution,release_year,binding_type,compare,value,unit,ligand_name,comments
+pdb_code,resolution,release_year,binding_type,compare,value,unit,ligand_name,comments
 2tpi,2.10,1982,Kd,=,49,uM,2-mer,
 5tln,2.30,1982,Ki,=,0.43,uM,BAN,incomplete ligand structure
 4tln,2.30,1982,Ki,=,190,uM,LNO,
