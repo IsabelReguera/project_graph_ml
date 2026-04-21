@@ -4,11 +4,39 @@ from functools import partial
 
 import torch
 import cpdb
-from graphein.protein.config import ProteinGraphConfig
+
+from graphein.protein.config import ProteinGraphConfig, add_peptide_bonds
 from graphein.protein.graphs import construct_graph
-from graphein.protein.edges.distance import add_distance_threshold
+from graphein.protein.edges.distance import add_peptide_bonds, add_distance_threshold
+from graphein.protein.features.nodes.amino_acid import meiler_embedding
+
 from graphein.protein.visualisation import plotly_protein_structure_graph
+from functools import partial
 import py3Dmol
+
+AMINO_ACIDS = {
+    'ALA': 0, 'ARG': 1, 'ASN': 2, 'ASP': 3, 'CYS': 4,
+    'GLN': 5, 'GLU': 6, 'GLY': 7, 'HIS': 8, 'ILE': 9,
+    'LEU': 10, 'LYS': 11, 'MET': 12, 'PHE': 13, 'PRO': 14,
+    'SER': 15, 'THR': 16, 'TRP': 17, 'TYR': 18, 'VAL': 19
+}
+# funzioni di annotazione nodi 
+node_funcs = [
+    meiler_embedding,      # Carica il Meiler Embedding, proprietà chimico-fisiche per ogni aminoacido
+]
+
+# funzioni di costruzione degli archi
+edge_funcs = [
+    add_peptide_bonds,    # Archi (legami covalenti)
+    partial(add_distance_threshold,  long_interaction_threshold=0, threshold=8.0) # Archi spaziali
+]
+
+# configurazione del grafo con le funzioni specificate
+GRAPH_CONFIG = ProteinGraphConfig(
+    node_metadata_functions=node_funcs,
+    edge_construction_functions=edge_funcs,
+    verbose=False
+)
 
 class Protein:
     def __init__(self, pdb_code, pdb_path=None):
@@ -36,21 +64,17 @@ class Protein:
         """Genera il grafo lazy alla prima lettura."""
         if self._graph is not None:
             return
-        edge_funcs = [
-            partial(add_distance_threshold, long_interaction_threshold=0, threshold=8.0)
-        ]
-        config = ProteinGraphConfig(edge_construction_functions=edge_funcs)
+        
+        config = GRAPH_CONFIG
 
         if self.pdb_path:
-            #print(f"Costruzione grafo dal file locale: {self.pdb_path}...")
-            # Workaround: cpdb.parse_pdb_file (estensione C) crasha non so perchè;
+            # Workaround: construct_graph(config=config, path=self.pdb_path) crasha non so perchè;
             # leggiamo il file come stringa e usiamo il parser Python.
             with open(self.pdb_path, "r") as f:
                 raw_df = cpdb.parse(pdb_str=f.read())
             self._graph = construct_graph(config=config, df=raw_df)
 
         else:
-            #print(f"Download e costruzione grafo per PDB: {self.pdb_code}...")
             self._graph = construct_graph(config=config, pdb_code=self.pdb_code)
 
     @property
@@ -59,32 +83,24 @@ class Protein:
         self._ensure_graph()
         return self._graph
 
-    def get_info(self):
-        """info sul grafo - test"""
-        g = self.graph
-        return {
-            "n_nodes": len(g.nodes()),
-            "n_edges": len(g.edges()),
-            "nodes_sample": list(g.nodes())[:5]
-        }
-
     def _get_node_features(self):
         """Feature residui:
-            Meiler embedding 7D -> rappresentazione continua dell'amminoacido
-            b_factor           -> flessibilità/mobilità del residuo
-        Shape: [N, 8], float32
+            Meiler embedding 7D  -> rappresentazione chimico-fisica dell'amminoacido. (idrofobicità, volume sterico, Polarizzabilità, polarità, Potenziale Isuelettrico, Indice di Refrattività, Propensione per l'Elica alpha) 
+            b_factor             -> flessibilità/mobilità dell'amminoacido (misura l'incertezza della posizione di un atomo).
+            res_name   ??        -> tipo di amminoacido ex: ALA, ARG, ecc. (potrebbe essere codificato come one-hot ma trppo sparso)
         """
         feats = []
         for _, d in self.graph.nodes(data=True):
-            meiler = list(d["meiler"].values)        # 7 valori float
-            feats.append(meiler + [d["b_factor"]])
+            meiler = list(d["meiler"].values)       # 7 valori 
+            b_factor = d["b_factor"]                # 1 valore 
+            feats.append(meiler + [b_factor])  # concatenazione delle feature
         return torch.tensor(feats, dtype=torch.float32)
 
     def _get_edge_index(self):
         """Edge index bidirezionale"""
         src, dst = [], []
         nodes = list(self.graph.nodes())
-        idx = {n: i for i, n in enumerate(nodes)}
+        idx = {n: i for i, n in enumerate(nodes)} # mappa {nodo: indice} per edge_index
         for u, v in self.graph.edges():
             src.extend([idx[u], idx[v]])
             dst.extend([idx[v], idx[u]])
@@ -93,15 +109,18 @@ class Protein:
     def _get_edge_features(self):
         """Feature arco (bidirezionali):
             distanza Ca-Ca in Angstrom
+           Flag Binario (1.0 = Peptide Bond, 0.0 = Altro)
         """
         feats = []
         for _, _, d in self.graph.edges(data=True):
-            f = [d["distance"]]
-            feats.extend([f, f])
+            distance= d["distance"]
+            is_peptide = 1.0 if "peptide_bond" in d.get("kind", set()) else 0.0
+            f = [distance, is_peptide] # distanza + flag peptide bond
+            feats.extend([f, f]) # bidirezionale: stesso valore in entrambe le direzioni
         return torch.tensor(feats, dtype=torch.float32)
 
     def _get_3d_coordinates(self):
-        """Coordinate Ca. Shape: [N, 3], float32."""
+        """Coordinate ?? non so se serve"""
         pos = [d["coords"].tolist() for _, d in self.graph.nodes(data=True)]
         return torch.tensor(pos, dtype=torch.float32)
 
