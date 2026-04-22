@@ -93,7 +93,7 @@ class Ligand:
         return torch.tensor(feats, dtype=torch.float32)
 
     def _get_edge_index(self):
-        """Costruisce l'edge_index bidirezionale per PyTorch Geometric."""
+        """Costruisce l'edge_index bidirezionale per PyTorch Geometric.""" #TODO fixa metti archi basati sulle distanze
         src, dst = [], []
         for bond in self.mol.GetBonds():
             start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
@@ -101,10 +101,10 @@ class Ligand:
             dst.extend([end, start])
         return torch.tensor([src, dst], dtype=torch.long)
 
-    def _get_edge_features(self):
+    def _get_edge_features(self): #TODO aggiungi distanza (lunghezza arco) e tipo di legamec(se reale o per distanza)
         """
         Feature di legame (bidirezionali): 
-            tipo di legame (singolo=1, doppio=2, triplo=3, aromatico=1.5),
+            tipo di legame (singolo=1, doppio=2, triplo=3, aromatico=1.5, xx per legame falso),
             coniugazione 
         """
         feats = []

@@ -6,6 +6,8 @@ from torch_geometric.data import Dataset, HeteroData
 from ligand import Ligand
 from protein import Protein
 
+#TODO separa HeteroData in due Data, salva match e score nelle Y
+
 class PDBbindHeteroDataset(Dataset):
     def __init__(self, root, csv_path, from_local_files=False, limit=None, transform=None, pre_transform=None):
         self.csv_path = csv_path

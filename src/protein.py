@@ -74,7 +74,7 @@ class Protein:
         self._ensure_graph()
         return self._graph
 
-    def _get_node_features(self):
+    def _get_node_features(self):#TODO cerca feature foglietto beta
         """Feature residui:
             Meiler embedding 7D  -> rappresentazione chimico-fisica dell'amminoacido. (idrofobicità, volume sterico, Polarizzabilità, polarità, Potenziale Isuelettrico, Indice di Refrattività, Propensione per l'Elica alpha) 
             b_factor             -> flessibilità/mobilità dell'amminoacido (misura l'incertezza della posizione di un atomo).
@@ -97,10 +97,10 @@ class Protein:
             dst.extend([idx[v], idx[u]])
         return torch.tensor([src, dst], dtype=torch.long)
 
-    def _get_edge_features(self):
+    def _get_edge_features(self):#TODO
         """Feature arco (bidirezionali):
             distanza Ca-Ca in Angstrom
-           Flag Binario (1.0 = Peptide Bond, 0.0 = Altro)
+           Flag Binario (1.0 = Peptide Bond, 0.0 = Altro) espandi a tipo fi legame in generale
         """
         feats = []
         for _, _, d in self.graph.edges(data=True):
