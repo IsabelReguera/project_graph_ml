@@ -92,30 +92,62 @@ class Ligand:
             ])
         return torch.tensor(feats, dtype=torch.float32)
 
-    def _get_edge_index(self):
-        """Costruisce l'edge_index bidirezionale per PyTorch Geometric.""" #TODO fixa metti archi basati sulle distanze
-        src, dst = [], []
-        for bond in self.mol.GetBonds():
-            start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
-            src.extend([start, end])
-            dst.extend([end, start])
-        return torch.tensor([src, dst], dtype=torch.long)
-
-    def _get_edge_features(self): #TODO aggiungi distanza (lunghezza arco) e tipo di legamec(se reale o per distanza)
+    #questa nuova funzione sostituisce le precedenti _get_edge_index e _get_edge_features, combinandole in un'unica funzione che calcola sia gli indici degli archi che le loro feature in un unico passaggio
+    #struttura del tensore: [Tipo, Coniugazione, Distanza, Reale/Falso]
+    def _get_edges_and_features(self, pos, cutoff=5.0):
         """
-        Feature di legame (bidirezionali): 
-            tipo di legame (singolo=1, doppio=2, triplo=3, aromatico=1.5, xx per legame falso),
-            coniugazione 
+        Calcola archi e feature includendo sia i legami chimici reali 
+        sia i legami "falsi" basati sulla vicinanza spaziale (entro il cutoff).
+        
+        Feature di legame:
+            0: Tipo di legame (1=singolo, 1.5=arom, 2=doppio, 3=triplo, 0=falso/distanza)
+            1: Coniugazione (1 se coniugato, 0 altrimenti)
+            2: Distanza 3D tra i due atomi (lunghezza arco)
+            3: Flag di validità (1 se è un legame chimico reale, 0 se è solo per vicinanza)
         """
-        feats = []
+        #legami reali 
+        real_bonds = {}
         for bond in self.mol.GetBonds():
-            f = [
-                bond.GetBondTypeAsDouble(),
-                int(bond.GetIsConjugated()),
-            ]
-            feats.extend([f, f])  # bidirezionale: stesso valore in entrambe le direzioni
-        return torch.tensor(feats, dtype=torch.float32)
-
+            u, v = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+            real_bonds[(u, v)] = bond
+            real_bonds[(v, u)] = bond  # Grafo bidirezionale
+            
+        src, dst, edge_attrs = [], [], []
+        num_atoms = self.mol.GetNumAtoms()
+        
+        # Calcolo vettoriale di tutte le distanze 3D tra gli atomi
+        dist_matrix = torch.cdist(pos, pos)
+        
+        for i in range(num_atoms):
+            for j in range(num_atoms):
+                if i == j: 
+                    continue # Saltiamo i self-loops (un atomo legato a se stesso)
+                
+                dist = dist_matrix[i, j].item()
+                is_real_bond = (i, j) in real_bonds
+                
+                # Creiamo un arco SE è un legame reale OPPURE se è fisicamente vicino
+                if is_real_bond or dist <= cutoff:
+                    src.append(i)
+                    dst.append(j)
+                    
+                    if is_real_bond:
+                        bond = real_bonds[(i, j)]
+                        bond_type = bond.GetBondTypeAsDouble()
+                        is_conjugated = float(bond.GetIsConjugated())
+                        is_real = 1.0
+                    else:
+                        bond_type = 0.0     # Nessun legame chimico
+                        is_conjugated = 0.0 # Non può essere coniugato
+                        is_real = 0.0       # Legame "falso" per vicinanza spaziale
+                        
+                    edge_attrs.append([bond_type, is_conjugated, dist, is_real])
+                    
+        edge_index = torch.tensor([src, dst], dtype=torch.long)
+        edge_attr = torch.tensor(edge_attrs, dtype=torch.float32)
+        
+        return edge_index, edge_attr
+   
     def _get_3d_coordinates(self):
         """Estrae le coordinate 3D degli atomi."""
         self._ensure_3d_coordinates()
@@ -126,12 +158,12 @@ class Ligand:
             pos.append([p.x, p.y, p.z])
         return torch.tensor(pos, dtype=torch.float32)
 
-    def get_pyg_graph(self):
+    def get_pyg_graph(self, distance_cutoff=5.0):
         """Restituisce (x, edge_index, edge_attr, pos) pronti per PyTorch Geometric."""
-        x          = self._get_node_features()
-        edge_index = self._get_edge_index()
-        edge_attr  = self._get_edge_features()
-        pos        = self._get_3d_coordinates()
+        x   = self._get_node_features()
+        pos = self._get_3d_coordinates()  
+        # Calcoliamo indici e feature insieme
+        edge_index, edge_attr = self._get_edges_and_features(pos, cutoff=distance_cutoff)
         return x, edge_index, edge_attr, pos
     
     def to_smile(self):
