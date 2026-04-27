@@ -60,11 +60,14 @@ class Ligand:
     def _ensure_3d_coordinates(self):
         """Genera coordinate 3D solo se necessario (Lazy Evaluation)."""
         if not self._computed_3d:
-            # Parametri migliorati per l'embedding
             params = AllChem.ETKDGv3()
             res = AllChem.EmbedMolecule(self.mol, params)
+            
             if res == -1: # Se fallisce l'embedding standard, prova il random
-                AllChem.EmbedMolecule(self.mol, AllChem.ETKDGv3(), useRandomCoords=True)
+                # Correzione: modifichiamo l'oggetto params invece di passarlo come kwarg
+                params_random = AllChem.ETKDGv3()
+                params_random.useRandomCoords = True
+                AllChem.EmbedMolecule(self.mol, params_random)
                 
             AllChem.MMFFOptimizeMolecule(self.mol)
             self._computed_3d = True

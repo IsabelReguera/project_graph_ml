@@ -217,3 +217,11 @@ marimo/_lsp/
 __marimo__/
 
 work_pdbbind/data_pdbbind/
+
+# Ignora i dati grezzi e processati
+data/raw/
+data/processed/
+*.pt
+
+# Ignora cache di Python
+__pycache__/
