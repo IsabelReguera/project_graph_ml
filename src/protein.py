@@ -28,6 +28,12 @@ GRAPH_CONFIG = ProteinGraphConfig(
     edge_construction_functions=edge_funcs,
     verbose=False
 )
+AMMINO_ACIDS_DICT = {
+    'ALA': 0, 'ARG': 1, 'ASN': 2, 'ASP': 3, 'CYS': 4,
+    'GLN': 5, 'GLU': 6, 'GLY': 7, 'HIS': 8, 'ILE': 9,
+    'LEU': 10,'LYS': 11,'MET': 12,'PHE': 13,'PRO': 14,
+    'SER': 15,'THR': 16,'TRP': 17,'TYR': 18,'VAL': 19
+}
 
 class Protein:
     def __init__(self, pdb_code, pdb_path=None):
@@ -78,37 +84,39 @@ class Protein:
         """Feature residui:
             Meiler embedding 7D  -> rappresentazione chimico-fisica dell'amminoacido. (idrofobicità, volume sterico, Polarizzabilità, polarità, Potenziale Isuelettrico, Indice di Refrattività, Propensione per l'Elica alpha) 
             b_factor             -> flessibilità/mobilità dell'amminoacido (misura l'incertezza della posizione di un atomo).
-            res_name   ??        -> tipo di amminoacido ex: ALA, ARG, ecc. (potrebbe essere codificato come one-hot ma trppo sparso)
+            res_name             -> tipo di amminoacido ex: ALA, ARG, ecc. (potrebbe essere codificato come one-hot ma trppo sparso)
         """
         feats = []
         for _, d in self.graph.nodes(data=True):
             meiler = list(d["meiler"].values)       # 7 valori 
             b_factor = d["b_factor"]                # 1 valore 
-            feats.append(meiler + [b_factor])  # concatenazione delle feature
+            res_name = AMMINO_ACIDS_DICT.get(d["residue_name"], 99)  # codice numerico dell'amminoacido
+            feats.append(meiler + [b_factor] + [res_name])  # concatenazione delle feature
         return torch.tensor(feats, dtype=torch.float32)
 
-    def _get_edge_index(self):
-        """Edge index bidirezionale"""
-        src, dst = [], []
+    def _get_edges_and_features(self):
+        """
+        Feature arco (bidirezionali):
+            0: Tipo legame (0.0 = contatto spaziale 1.0 = peptide bond covalente, ... altri tipi in futuro)
+            1: Distanza Ca-Ca in Å
+        """
         nodes = list(self.graph.nodes())
-        idx = {n: i for i, n in enumerate(nodes)} # mappa {nodo: indice} per edge_index
-        for u, v in self.graph.edges():
+        idx = {n: i for i, n in enumerate(nodes)}
+        src, dst, edge_attrs = [], [], []
+
+        for u, v, d in self.graph.edges(data=True):
+            is_peptide = "peptide_bond" in d.get("kind", set())
+            bond_type = 1.0 if is_peptide else 0.0
+            distance  = d["distance"]
+            attr = [bond_type, distance]
+
             src.extend([idx[u], idx[v]])
             dst.extend([idx[v], idx[u]])
-        return torch.tensor([src, dst], dtype=torch.long)
+            edge_attrs.extend([attr, attr])
 
-    def _get_edge_features(self):#TODO
-        """Feature arco (bidirezionali):
-            distanza Ca-Ca in Angstrom
-           Flag Binario (1.0 = Peptide Bond, 0.0 = Altro) espandi a tipo fi legame in generale
-        """
-        feats = []
-        for _, _, d in self.graph.edges(data=True):
-            distance= d["distance"]
-            is_peptide = 1.0 if "peptide_bond" in d.get("kind", set()) else 0.0
-            f = [distance, is_peptide] # distanza + flag peptide bond
-            feats.extend([f, f]) # bidirezionale: stesso valore in entrambe le direzioni
-        return torch.tensor(feats, dtype=torch.float32)
+        edge_index = torch.tensor([src, dst], dtype=torch.long)
+        edge_attr  = torch.tensor(edge_attrs, dtype=torch.float32)
+        return edge_index, edge_attr
 
     def _get_3d_coordinates(self):
         """Coordinate ?? non so se serve"""
@@ -117,10 +125,9 @@ class Protein:
 
     def get_pyg_graph(self):
         """Restituisce (x, edge_index, edge_attr, pos) pronti per PyTorch Geometric."""
-        x          = self._get_node_features()
-        edge_index = self._get_edge_index()
-        edge_attr  = self._get_edge_features()
-        pos        = self._get_3d_coordinates()
+        x                    = self._get_node_features()
+        pos                  = self._get_3d_coordinates()
+        edge_index, edge_attr = self._get_edges_and_features()
         return x, edge_index, edge_attr, pos
     
     def visualize_protein_graph(self):
