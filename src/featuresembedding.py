@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch_geometric.nn import MessagePassing
 
 
 class GraphEncoder(nn.Module):
@@ -80,10 +81,10 @@ class DualGraphTokenizer(nn.Module):
         """Constructor.
 
         Args:
-          node_protein_sizes: int, dimensionality of the input protein node features 
-          edge_protein_sizes: int, dimensionality of the input protein edge features 
-          node_ligand_sizes: int, dimensionality of the input ligand node features 
-          edge_ligand_sizes: int, dimensionality of the input ligand edge features 
+          node_protein_dim: int, dimensionality of the input protein node features 
+          edge_protein_dim: int, dimensionality of the input protein edge features 
+          node_ligand_dim: int, dimensionality of the input ligand node features 
+          edge_ligand_dim: int, dimensionality of the input ligand edge features 
           node_protein_hidden_sizes: list of ints, hidden sizes for the protein node encoder network 
             The last element is the size of the final node embeddings.
           edge_protein_hidden_sizes: list of ints, hidden sizes for the protein edge encoder network. 
@@ -153,3 +154,95 @@ class DualGraphTokenizer(nn.Module):
         lig_batch.edge_attr = lig_edge
         
         return prot_batch, lig_batch
+    
+
+
+
+import torch
+import torch.nn as nn
+from torch_geometric.nn import MessagePassing
+
+class GraphPropLayer(MessagePassing):
+    
+    """Implementation of a custom message passing layer."""
+    
+    def __init__(self, node_hidden_sizes, edge_hidden_sizes, aggr_type, update_type):
+        
+        """Constructor.
+
+        Args:
+          node_hidden_sizes: int, dimensionality of the node states.
+          edge_hidden_sizes: int, dimensionality of the edge states.
+          aggr_type: str, aggregation method for messages, one of {'sum', 'mean', 'max'}.
+          update_type: str, type of node update function, one of {'residual', 'gru', 'mlp'}.
+        
+        Raises:
+          ValueError: if aggr_type or update_type are not supported.
+        """
+        
+        if aggr_type not in ['sum', 'mean', 'max']:
+            raise ValueError(f"Unknown aggregation type: {aggr_type}")
+            
+        super(GraphPropLayer, self).__init__(aggr=aggr_type)
+        
+        self.node_hidden_sizes = node_hidden_sizes
+        self.edge_hidden_sizes = edge_hidden_sizes
+        self.aggr_type = aggr_type
+        self.update_type = update_type
+
+        
+        self.message_net = nn.Sequential(
+            nn.Linear(node_hidden_sizes * 2 + edge_hidden_sizes, node_hidden_sizes),
+            nn.ReLU(),
+            nn.Linear(node_hidden_sizes, node_hidden_sizes)
+        )
+        
+      
+        if self.update_type in ['residual', 'mlp']:
+            self.update_net = nn.Sequential(
+                nn.Linear(node_hidden_sizes * 2, node_hidden_sizes),
+                nn.ReLU()
+            )
+        elif self.update_type == 'gru':
+            self.update_net = nn.GRUCell(node_hidden_sizes, node_hidden_sizes)
+        else:
+             raise ValueError(f"Unknown update type: {update_type}")
+
+    def forward(self, x, edge_index, edge_attr):
+        """Run one propagation step.
+
+        Args:
+          x: [n_nodes, node_hidden_sizes] float tensor, current node states.
+          edge_index: [2, n_edges] long tensor, graph connectivity.
+          edge_attr: [n_edges, edge_hidden_sizes] float tensor, edge features.
+
+        Returns:
+          new_x: [n_nodes, node_hidden_sizes] float tensor, updated node states.
+        """
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    
+    def message(self, x_i, x_j, edge_attr):
+        """Constructs messages from node j to node i.
+        
+        Automatically called by self.propagate().
+        """
+        message_inputs = torch.cat([x_i, x_j, edge_attr], dim=-1)
+        return self.message_net(message_inputs)
+
+    
+    def update(self, aggr_out, x): 
+        """Updates node states given the aggregated messages.
+        
+        Automatically called by self.propagate() after message aggregation.
+        """
+        if self.update_type == 'gru':
+            return self.update_net(aggr_out, x)
+            
+        elif self.update_type == 'residual':
+            nuovo_stato = torch.cat([x, aggr_out], dim=-1)
+            return x + self.update_net(nuovo_stato)
+            
+        elif self.update_type == 'mlp':
+            nuovo_stato = torch.cat([x, aggr_out], dim=-1)
+            return self.update_net(nuovo_stato)
