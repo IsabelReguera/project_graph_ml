@@ -94,13 +94,13 @@ class DualGraphTokenizer(nn.Module):
 
         super(DualGraphTokenizer, self).__init__()
         
-        self._node_protein_sizes = node_protein_dim
-        self._edge_protein_sizes = edge_protein_dim
+        self._node_protein_dim = node_protein_dim
+        self._edge_protein_dim = edge_protein_dim
         self._node_protein_hidden_sizes = node_protein_hidden_sizes
         self._edge_protein_hidden_sizes = edge_protein_hidden_sizes
         
-        self._node_ligand_sizes = node_ligand_dim
-        self._edge_ligand_sizes = edge_ligand_dim
+        self._node_ligand_dim = node_ligand_dim
+        self._edge_ligand_dim = edge_ligand_dim
         self._node_ligand_hidden_sizes = node_ligand_hidden_sizes
         self._edge_ligand_hidden_sizes = edge_ligand_hidden_sizes
         
