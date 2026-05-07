@@ -2,6 +2,7 @@ import os
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch
+import pandas as pd
 
 
 class ComplexDataset(Dataset):
@@ -30,7 +31,7 @@ class ComplexDataset(Dataset):
 
 def complex_collate_fn(batch):
     """Collate per DataLoader: separa le tuple e crea due Batch PyG."""
-    proteins, ligands = zip(*batch)
+    proteins, ligands = zip(*batch) # unzip per ottenere due liste separate
     return Batch.from_data_list(list(proteins)), Batch.from_data_list(list(ligands))
 
 
@@ -39,8 +40,6 @@ def build_complex_dataset(processed_dir, csv_path, limit=None):
     Costruisce un ComplexDataset a partire dai file .pt già su disco.
     Considera solo i pdb_code per cui esistono sia protein_*.pt che ligand_*.pt.
     """
-    import pandas as pd
-
     df = pd.read_csv(csv_path)
     if limit is not None:
         df = df.iloc[:limit]

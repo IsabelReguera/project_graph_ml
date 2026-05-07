@@ -222,5 +222,8 @@ data/raw/
 data/processed/
 *.pt
 
+#logs
+lightning_logs/
+
 # Ignora cache di Python
 __pycache__/

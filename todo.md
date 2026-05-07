@@ -9,7 +9,7 @@ Context
 Il progetto ha già il preprocessing completo (Protein + Ligand → PyG Data su disco). Il passo successivo è costruire un modello che prenda i due grafi come input e predica pAffinity (valore continuo = -log10(Kd/Ki/IC50)). L'ispirazione è Graph Matching Networks (GMN, Li et al. ICML 2019), adattata: invece di verificare se due grafi sono strutturalmente simili, il modello deve imparare quanto proteina e ligando si "matchano" biologicamente.
 
 Analisi del problema e parere step-by-step
-Step 0 — Usa il pocket, non la proteina intera
+## Step 0 — Usa il pocket, non la proteina intera
 Il dataset ha già {pdb_code}_pocket.pdb (residui entro ~10 Å dal ligando). Usare sempre il pocket invece di _protein.pdb:
 
 La proteina intera ha ~300–1000 residui; il pocket ne ha ~30–80
@@ -17,29 +17,32 @@ Cross-attention tra pocket e ligando è O(N_pocket × N_ligand) ≈ 50×30 = ges
 Cross-attention su proteina intera sarebbe O(500×30) = costoso e rumoroso
 Impatto su pdbbind_dataset.py: aggiungere mode='pocket' che usa _pocket.pdb invece di _protein.pdb.
 
-### Step 1 — Feature Tokenization (comune a tutti i modelli)
-Il problema è che protein nodes hanno 9 feature e ligand nodes ne hanno 7 → spazi diversi → cross-attention non ha senso diretto.
+## Step 1 — Feature Tokenization per-feature (comune a tutti i modelli)
+Ogni feature viene espansa individualmente in uno spazio token_dim — non una proiezione congiunta. Ogni feature diventa un token:
+- feature continua  → Linear(1, token_dim)               — no ReLU
+- feature categorica → nn.Embedding(num_categories, token_dim)
 
-Soluzione: encoder separati che proiettano nel medesimo spazio latente hidden_dim (es. 128):
+I token vengono concatenati e aggregati con un MLP:
+[tok_0 ∥ tok_1 ∥ ... ∥ tok_N]  →  Linear(N·token_dim, hidden_dim) → ReLU 
 
-protein_node_encoder:  Linear(9, hidden_dim)  + ReLU
-ligand_node_encoder:   Linear(7, hidden_dim)  + ReLU
-protein_edge_encoder:  Linear(2, edge_dim)    + ReLU   (edge_dim es. 64)
-ligand_edge_encoder:   Linear(4, edge_dim)    + ReLU
-Questi encoder sono i primi layer di qualsiasi modello (baseline e cross-attention).
+Schema feature proteina (9 feature): 7 Meiler (continui) + b_factor (continuo) + aa_code (categorico, 20 classi)
+Schema feature ligando  (7 feature): atomic_number (categorico, 120) + degree, total_h, formal_charge, aromatic, in_ring (continui) + hybridization (categorico, 7)
+Edge features: proiezione congiunta Linear(edge_in, edge_dim) senza ReLU — sono tutte continue e poche (2 o 4).
 
-### Step 2 — Baseline (GNN senza cross-attention)
+Classe: FeatureTokenizer in src/featuresembedding.py
+
+## Step 2 — Baseline (GNN senza cross-attention)
 Architettura:
 
-protein_nodes → protein_node_encoder → GNN × L strati → mean pooling → h_P  [hidden_dim]
-ligand_nodes  → ligand_node_encoder  → GNN × L strati → mean pooling → h_L  [hidden_dim]
+protein_nodes → Tokenizer → GNN × L strati → mean pooling → h_P  [hidden_dim]
+ligand_nodes  → Tokenizer  → GNN × L strati → mean pooling → h_L  [hidden_dim]
 
 concat([h_P, h_L])  →  MLP(2·hidden_dim → hidden_dim → 1)  →  pAffinity_pred
 Layer GNN consigliato: GINEConv (PyG) perché accetta edge features natively.
 
 Il baseline è il punto di riferimento: se il modello cross-attention non batte questo, la cross-attention non aggiunge valore.
 
-### Step 3 — Modello Cross-Attention GMN-style
+## Step 3 — Modello Cross-Attention GMN-style
 Ogni layer GNN viene esteso con un passo di cross-graph attention:
 
 Per ogni nodo proteina i:
@@ -58,7 +61,7 @@ mean_pool(H^L) → h_L
 MLP([h_P ∥ h_L]) → pAffinity
 Differenza chiave vs. baseline: durante il message passing i nodi dei due grafi si "parlano" → il modello impara quali residui interagiscono con quali atomi.
 
-### Step 4 — Task: Regressione su pAffinity
+## Step 4 — Task: Regressione su pAffinity
 Usare regressione, non classificazione.
 
 Motivazioni:
@@ -75,7 +78,7 @@ Pearson R — correlazione lineare
 Spearman ρ — correlazione di rango (robusta a outlier)
 Concordance Index (CI) — opzionale, misura quanto l'ordine relativo è preservato
 
-### Step 5 — DataLoader che accoppia i due grafi
+## Step 5 — DataLoader che accoppia i due grafi
 pdbbind_dataset.py produce protein_{code}.pt e ligand_{code}.pt separatamente. Serve un collator che li unisca per pdb_code in batch:
 
 class ComplexDataset(Dataset):

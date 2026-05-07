@@ -90,7 +90,7 @@ class Protein:
         for _, d in self.graph.nodes(data=True):
             meiler = list(d["meiler"].values)       # 7 valori 
             b_factor = d["b_factor"]                # 1 valore 
-            res_name = AMMINO_ACIDS_DICT.get(d["residue_name"], 99)  # codice numerico dell'amminoacido
+            res_name = AMMINO_ACIDS_DICT.get(d["residue_name"], 20)  # codice numerico dell'amminoacido (20 = sconosciuto)
             feats.append(meiler + [b_factor] + [res_name])  # concatenazione delle feature
         return torch.tensor(feats, dtype=torch.float32)
 

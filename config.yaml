@@ -1,0 +1,16 @@
+# Configurazione per dataset, modello e training.
+
+dataset:
+  PL_csv: "data/raw/PL_cleaned_index.csv"
+  processed_dir: "data/processed"
+
+model:
+  token_dim: 16
+  node_embedding_dim: 48
+  edge_embedding_dim: 32
+  lr: 0.0005
+
+training:
+  batch_size: 16
+  epochs: 100
+  use_amp: true
