@@ -15,7 +15,7 @@ PROTEIN_NODE_SCHEMA = [
     {'type': 'continuous'},                           # meiler 5 — indice di rifrazione
     {'type': 'continuous'},                           # meiler 6 — propensione α-elica
     {'type': 'continuous'},                           # b_factor
-    {'type': 'categorical', 'num_categories': 21},    # aa_code (0–19 standard, 20 sconosciuto)
+    
 ]
 
 LIGAND_NODE_SCHEMA = [

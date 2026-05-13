@@ -1,147 +1,153 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import MessagePassing
-
 
 class GraphEncoder(nn.Module):
+    """Encoder module that projects node and edge features to embeddings using feature-specific tokenization."""
     
-    """Encoder module that projects node and edge features to some embeddings."""
-    
-    def __init__(self, node_feature_dim, edge_feature_dim, node_hidden_sizes=None, edge_hidden_sizes=None, name=None):
-        
+    def __init__(self, node_schema, edge_schema, token_dim, node_hidden_sizes=None, edge_hidden_sizes=None, name=None):
         """Constructor.
 
         Args:
-          node_hidden_sizes: if provided should be a list of ints, hidden sizes of
-            node encoder network, the last element is the size of the node outputs.
-            If not provided, node features will pass through as is.
-          edge_hidden_sizes: if provided should be a list of ints, hidden sizes of
-            edge encoder network, the last element is the size of the edge outptus.
-            If not provided, edge features will pass through as is.
+          node_schema: list of dicts defining the type and parameters of each node feature column.
+          edge_schema: list of dicts defining the type and parameters of each edge feature column.
+          token_dim: int, the intermediate projection space for each individual feature (default: 32).
+          node_hidden_sizes: list of ints, hidden sizes of node encoder network.
+          edge_hidden_sizes: list of ints, hidden sizes of edge encoder network.
           name: name of this module.
         """
-
         super(GraphEncoder, self).__init__()
-        self._node_feature_dim = node_feature_dim
-        self._edge_feature_dim = edge_feature_dim
+        self._node_schema = node_schema
+        self._edge_schema = edge_schema
+        self._token_dim = token_dim
         self._node_hidden_sizes = node_hidden_sizes if node_hidden_sizes else None
         self._edge_hidden_sizes = edge_hidden_sizes
+        
         self._build_model()
 
     def _build_model(self):
-        layer = []
-        layer.append(nn.Linear(self._node_feature_dim, self._node_hidden_sizes[0]))
-        for i in range(1, len(self._node_hidden_sizes)):
-            layer.append(nn.ReLU())
-            layer.append(nn.Linear(self._node_hidden_sizes[i - 1], self._node_hidden_sizes[i]))
-        self.MLP1 = nn.Sequential(*layer)
+        node_projectors = []
+        for feat in self._node_schema:
+            if feat['type'] == 'continuous':
+                node_projectors.append(nn.Linear(1, self._token_dim))
+            elif feat['type'] == 'categorical':
+                node_projectors.append(nn.Embedding(feat['num_categories'], self._token_dim))
+            else:
+                raise ValueError(f"Unknown feature type: {feat['type']}")
+        self._node_projectors = nn.ModuleList(node_projectors)
 
-        if self._edge_hidden_sizes is not None:
-            layer = []
-            layer.append(nn.Linear(self._edge_feature_dim, self._edge_hidden_sizes[0]))
+        if self._node_hidden_sizes is not None:
+            mlp_input_dim = len(self._node_schema) * self._token_dim
+            layer = [nn.Linear(mlp_input_dim, self._node_hidden_sizes[0])]
+            for i in range(1, len(self._node_hidden_sizes)):
+                layer.append(nn.ReLU())
+                layer.append(nn.Linear(self._node_hidden_sizes[i - 1], self._node_hidden_sizes[i]))
+            self.MLP1 = nn.Sequential(*layer)
+        else:
+            self.MLP1 = None
+
+
+        if self._edge_schema is not None and self._edge_hidden_sizes is not None:
+            edge_projectors = []
+            for feat in self._edge_schema:
+                if feat['type'] == 'continuous':
+                    edge_projectors.append(nn.Linear(1, self._token_dim))
+                elif feat['type'] == 'categorical':
+                    edge_projectors.append(nn.Embedding(feat['num_categories'], self._token_dim))
+                else:
+                    raise ValueError(f"Unknown feature type: {feat['type']}")
+            self._edge_projectors = nn.ModuleList(edge_projectors)
+
+            mlp_input_dim = len(self._edge_schema) * self._token_dim
+            layer = [nn.Linear(mlp_input_dim, self._edge_hidden_sizes[0])]
             for i in range(1, len(self._edge_hidden_sizes)):
                 layer.append(nn.ReLU())
                 layer.append(nn.Linear(self._edge_hidden_sizes[i - 1], self._edge_hidden_sizes[i]))
             self.MLP2 = nn.Sequential(*layer)
         else:
+            self._edge_projectors = None
             self.MLP2 = None
 
-    def forward(self, node_features, edge_features=None):
+    def _tokenize_features(self, features, schema, projectors):
+        """Helper method to slice columns and apply their respective embedding/linear layers."""
+        tokens = []
+        for i, (feat, proj) in enumerate(zip(schema, projectors)):
+            if feat['type'] == 'categorical':
+                tokens.append(proj(features[:, i].long()))
+            else:
+                tokens.append(proj(features[:, i:i + 1]))
         
-        """Encode node and edge features.
+        return torch.cat(tokens, dim=-1)
 
-        Args:
-          node_features: [n_nodes, node_feat_dim] float tensor.
-          edge_features: if provided, should be [n_edges, edge_feat_dim] float
-            tensor.
-
-        Returns:
-          node_outputs: [n_nodes, node_embedding_dim] float tensor, node embeddings.
-          edge_outputs: if edge_features is not None and edge_hidden_sizes is not
-            None, this is [n_edges, edge_embedding_dim] float tensor, edge
-            embeddings; otherwise just the input edge_features.
-        """
-        if self._node_hidden_sizes is None:
-            node_outputs = node_features
-        else:
-            node_outputs = self.MLP1(node_features)
+    def forward(self, node_features, edge_features=None):
+        """Encode node and edge features."""
+        
+        node_tokens = self._tokenize_features(node_features, self._node_schema, self._node_projectors)
+        node_outputs = self.MLP1(node_tokens) if self.MLP1 is not None else node_tokens
             
-        if edge_features is None or self._edge_hidden_sizes is None:
-            edge_outputs = edge_features
+        
+        if edge_features is not None and self._edge_projectors is not None:
+            edge_tokens = self._tokenize_features(edge_features, self._edge_schema, self._edge_projectors)
+            edge_outputs = self.MLP2(edge_tokens) if self.MLP2 is not None else edge_tokens
         else:
-            edge_outputs = self.MLP2(edge_features)
+            edge_outputs = edge_features
 
         return node_outputs, edge_outputs
 
 
-
 class DualGraphTokenizer(nn.Module):
-    def __init__(self,node_protein_dim,edge_protein_dim,node_ligand_dim,edge_ligand_dim,node_protein_hidden_sizes, edge_protein_hidden_sizes,node_ligand_hidden_sizes, edge_ligand_hidden_sizes):
+    
+    """Constructor.
         
-        """Constructor.
-
+        
         Args:
-          node_protein_dim: int, dimensionality of the input protein node features 
-          edge_protein_dim: int, dimensionality of the input protein edge features 
-          node_ligand_dim: int, dimensionality of the input ligand node features 
-          edge_ligand_dim: int, dimensionality of the input ligand edge features 
-          node_protein_hidden_sizes: list of ints, hidden sizes for the protein node encoder network 
+          node_protein_dim: int, dimensionality of the input protein node features
+          edge_protein_dim: int, dimensionality of the input protein edge features
+          node_ligand_dim: int, dimensionality of the input ligand node features
+          edge_ligand_dim: int, dimensionality of the input ligand edge features
+          node_protein_hidden_sizes: list of ints, hidden sizes for the protein node encoder network
             The last element is the size of the final node embeddings.
-          edge_protein_hidden_sizes: list of ints, hidden sizes for the protein edge encoder network. 
+          edge_protein_hidden_sizes: list of ints, hidden sizes for the protein edge encoder network.
             The last element is the size of the final edge embeddings.
           node_ligand_hidden_sizes: list of ints, hidden sizes for the ligand node encoder network.
           edge_ligand_hidden_sizes: list of ints, hidden sizes for the ligand edge encoder network.
-        """
 
+    """
+    def __init__(self, node_protein_schema, edge_protein_schema, node_ligand_schema, edge_ligand_schema,
+                 node_protein_hidden_sizes, edge_protein_hidden_sizes, node_ligand_hidden_sizes, edge_ligand_hidden_sizes,
+                 token_dim=32):
         super(DualGraphTokenizer, self).__init__()
         
-        self._node_protein_dim = node_protein_dim
-        self._edge_protein_dim = edge_protein_dim
+        self._node_protein_schema = node_protein_schema
+        self._edge_protein_schema = edge_protein_schema
         self._node_protein_hidden_sizes = node_protein_hidden_sizes
         self._edge_protein_hidden_sizes = edge_protein_hidden_sizes
         
-        self._node_ligand_dim = node_ligand_dim
-        self._edge_ligand_dim = edge_ligand_dim
+        self._node_ligand_schema = node_ligand_schema
+        self._edge_ligand_schema = edge_ligand_schema
         self._node_ligand_hidden_sizes = node_ligand_hidden_sizes
         self._edge_ligand_hidden_sizes = edge_ligand_hidden_sizes
-        
+        self._token_dim = token_dim
 
         self.protein_encoder = GraphEncoder(
-            node_feature_dim=self._node_protein_dim, 
-            edge_feature_dim=self._edge_protein_dim,  
+            node_schema=self._node_protein_schema, 
+            edge_schema=self._edge_protein_schema,  
+            token_dim=self._token_dim,
             node_hidden_sizes=self._node_protein_hidden_sizes,
             edge_hidden_sizes=self._edge_protein_hidden_sizes,
             name='protein-encoder'
         )
         
-        
         self.ligand_encoder = GraphEncoder(
-            node_feature_dim=self._node_ligand_dim, 
-            edge_feature_dim=self._edge_ligand_dim,  
+            node_schema=self._node_ligand_schema, 
+            edge_schema=self._edge_ligand_schema,  
+            token_dim=self._token_dim,
             node_hidden_sizes=self._node_ligand_hidden_sizes,
             edge_hidden_sizes=self._edge_ligand_hidden_sizes,
             name='ligand-encoder'
         )
 
     def forward(self, prot_batch_in, lig_batch_in):
-        
-        """Encode node and edge features for both protein and ligand graphs.
-
-        Args:
-          prot_batch: PyTorch Geometric Data or Batch object representing the protein. 
-            Expected to contain `.x` [n_prot_nodes, node_protein_sizes] float tensor and 
-            `.edge_attr` [n_prot_edges, edge_protein_sizes] float tensor.
-          lig_batch: PyTorch Geometric Data or Batch object representing the ligand. 
-            Expected to contain `.x` [n_lig_nodes, node_ligand_sizes] float tensor and 
-            `.edge_attr` [n_lig_edges, edge_ligand_sizes] float tensor.
-
-        Returns:
-          prot_batch: PyTorch Geometric Data or Batch object, where `.x` and `.edge_attr` 
-            have been updated to their new embedding dimensions.
-          lig_batch: PyTorch Geometric Data or Batch object, where `.x` and `.edge_attr` 
-            have been updated to their new embedding dimensions.
-        """
-
+        """Encode node and edge features for both protein and ligand graphs."""
         prot_batch = prot_batch_in.clone()
         lig_batch = lig_batch_in.clone()
         
@@ -154,7 +160,8 @@ class DualGraphTokenizer(nn.Module):
         lig_batch.edge_attr = lig_edge
         
         return prot_batch, lig_batch
-    
+
+
 
 
 
