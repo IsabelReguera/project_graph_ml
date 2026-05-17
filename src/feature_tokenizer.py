@@ -15,13 +15,13 @@ PROTEIN_NODE_SCHEMA = [
     {'type': 'continuous'},                           # meiler 5 — indice di rifrazione
     {'type': 'continuous'},                           # meiler 6 — propensione α-elica
     {'type': 'continuous'},                           # b_factor
-    
+    {'type': 'categorical', 'num_categories': 21}     # tipo aminoacido (20 standard + 1 per residui non standard/virtuali)
 ]
 
 LIGAND_NODE_SCHEMA = [
     {'type': 'categorical', 'num_categories': 120},   # numero atomico
     {'type': 'continuous'},                           # degree
-    {'type': 'continuous'},                           # H totali
+    {'type': 'continuous'},                           # H totali TODO: valutare se lasciare come continua o trasformare in categorica (0/1/2/3+)
     {'type': 'continuous'},                           # carica formale
     {'type': 'categorical', 'num_categories': 2},     # aromaticità (0=falso, 1=vero)
     {'type': 'categorical', 'num_categories': 2},     # in-ring (0=falso, 1=vero)
@@ -34,10 +34,9 @@ PROTEIN_EDGE_SCHEMA = [
 ]
 
 LIGAND_EDGE_SCHEMA = [
-    {'type': 'continuous'},                         # tipo legame (0/1/1.5/2/3) — non intero, lasciato continuo
-    {'type': 'continuous'},                         # coniugazione
+    {'type': 'categorical' , 'num_categories': 5},  # tipo legame (0/2/3/4/6) (2=singolo, 3=arom, 4=doppio, 6=triplo, 0=falso/distanza)
+    {'type': 'categorical', 'num_categories':2 },   # coniugazione (0=falso, 1=vero)
     {'type': 'continuous'},                         # distanza 3D in Å
-    {'type': 'categorical', 'num_categories': 2},   # flag validità (0=virtuale, 1=legame reale)
 ]
 
 

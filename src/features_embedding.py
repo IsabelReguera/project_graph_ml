@@ -95,51 +95,54 @@ class GraphEncoder(nn.Module):
 
 
 class DualGraphTokenizer(nn.Module):
+    """Tokenizer module that projects protein and ligand features to a shared latent space 
+    using dynamically extracted feature schemas.
+    """
     
-    """Constructor.
-        
+    def __init__(self, 
+                 schemas_dict,
+                 node_protein_hidden_sizes, 
+                 edge_protein_hidden_sizes, 
+                 node_ligand_hidden_sizes, 
+                 edge_ligand_hidden_sizes,
+                 token_dim):
+        """Constructor.
         
         Args:
-          node_protein_dim: int, dimensionality of the input protein node features
-          edge_protein_dim: int, dimensionality of the input protein edge features
-          node_ligand_dim: int, dimensionality of the input ligand node features
-          edge_ligand_dim: int, dimensionality of the input ligand edge features
-          node_protein_hidden_sizes: list of ints, hidden sizes for the protein node encoder network
+          schemas_dict: dict, containing the 4 feature schemas extracted by utility function.
+            Expected keys: 'protein_node', 'protein_edge', 'ligand_node', 'ligand_edge'.
+          node_protein_hidden_sizes: list of ints, hidden sizes for the protein node encoder network.
             The last element is the size of the final node embeddings.
           edge_protein_hidden_sizes: list of ints, hidden sizes for the protein edge encoder network.
             The last element is the size of the final edge embeddings.
           node_ligand_hidden_sizes: list of ints, hidden sizes for the ligand node encoder network.
           edge_ligand_hidden_sizes: list of ints, hidden sizes for the ligand edge encoder network.
-
-    """
-    def __init__(self, node_protein_schema, edge_protein_schema, node_ligand_schema, edge_ligand_schema,
-                 node_protein_hidden_sizes, edge_protein_hidden_sizes, node_ligand_hidden_sizes, edge_ligand_hidden_sizes,
-                 token_dim=32):
+          token_dim: int, embedding dimension for individual continuous/categorical tokens.
+        """
         super(DualGraphTokenizer, self).__init__()
         
-        self._node_protein_schema = node_protein_schema
-        self._edge_protein_schema = edge_protein_schema
+
+        self._schemas_dict = schemas_dict
         self._node_protein_hidden_sizes = node_protein_hidden_sizes
         self._edge_protein_hidden_sizes = edge_protein_hidden_sizes
-        
-        self._node_ligand_schema = node_ligand_schema
-        self._edge_ligand_schema = edge_ligand_schema
         self._node_ligand_hidden_sizes = node_ligand_hidden_sizes
         self._edge_ligand_hidden_sizes = edge_ligand_hidden_sizes
         self._token_dim = token_dim
 
+       
         self.protein_encoder = GraphEncoder(
-            node_schema=self._node_protein_schema, 
-            edge_schema=self._edge_protein_schema,  
+            node_schema=schemas_dict['protein_node'], 
+            edge_schema=schemas_dict['protein_edge'],  
             token_dim=self._token_dim,
             node_hidden_sizes=self._node_protein_hidden_sizes,
             edge_hidden_sizes=self._edge_protein_hidden_sizes,
             name='protein-encoder'
         )
         
+        
         self.ligand_encoder = GraphEncoder(
-            node_schema=self._node_ligand_schema, 
-            edge_schema=self._edge_ligand_schema,  
+            node_schema=schemas_dict['ligand_node'], 
+            edge_schema=schemas_dict['ligand_edge'],  
             token_dim=self._token_dim,
             node_hidden_sizes=self._node_ligand_hidden_sizes,
             edge_hidden_sizes=self._edge_ligand_hidden_sizes,
@@ -147,20 +150,31 @@ class DualGraphTokenizer(nn.Module):
         )
 
     def forward(self, prot_batch_in, lig_batch_in):
-        """Encode node and edge features for both protein and ligand graphs."""
+        """Encode node and edge features for both protein and ligand graphs.
+
+        Args:
+          prot_batch_in: PyG Data or Batch object representing the protein.
+          lig_batch_in: PyG Data or Batch object representing the ligand.
+
+        Returns:
+          prot_batch: Updated copy with embedded .x and .edge_attr tensors.
+          lig_batch: Updated copy with embedded .x and .edge_attr tensors.
+        """
+        # Cloniamo i batch per evitare side-effects sui gradienti
         prot_batch = prot_batch_in.clone()
         lig_batch = lig_batch_in.clone()
         
+        # Proiezione Proteina
         prot_x, prot_edge = self.protein_encoder(prot_batch.x, prot_batch.edge_attr)
         prot_batch.x = prot_x
         prot_batch.edge_attr = prot_edge
         
+        # Proiezione Ligando
         lig_x, lig_edge = self.ligand_encoder(lig_batch.x, lig_batch.edge_attr)
         lig_batch.x = lig_x
         lig_batch.edge_attr = lig_edge
         
         return prot_batch, lig_batch
-
 
 
 

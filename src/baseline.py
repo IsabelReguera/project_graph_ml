@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torch_geometric.nn import GINEConv, global_mean_pool
-from feature_tokenizer import DualFeatureTokenizer
+from features_embedding import DualGraphTokenizer
+from utils import DATASET_SCHEMAS
 
 
 class BaselineGNN(pl.LightningModule):
@@ -15,8 +16,17 @@ class BaselineGNN(pl.LightningModule):
     def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, lr=1e-3):
         super().__init__()
         self.save_hyperparameters() #salva tutti gli hyperparam passati al costruttore, accessibili via self.hparams
-
-        self.tokenizer = DualFeatureTokenizer(token_dim, node_embedding_dim, edge_embedding_dim)
+        
+        dataset_schemas = DATASET_SCHEMAS
+        
+        self.tokenizer = DualGraphTokenizer(
+            schemas_dict=dataset_schemas,
+            node_protein_hidden_sizes=[node_embedding_dim],
+            edge_protein_hidden_sizes=[edge_embedding_dim],
+            node_ligand_hidden_sizes=[node_embedding_dim],
+            edge_ligand_hidden_sizes=[edge_embedding_dim],
+            token_dim=token_dim
+        )
         self.prot_gnn = GINEConv(
             nn.Sequential(
                 nn.Linear(node_embedding_dim, node_embedding_dim),
@@ -33,6 +43,7 @@ class BaselineGNN(pl.LightningModule):
         )
         self.mlp= nn.Sequential(
             nn.Linear(2 * node_embedding_dim, node_embedding_dim),
+            #TODO: aggiungere normalizzazione e dropout se necessario, valutare GELU
             nn.ReLU(),
             nn.Linear(node_embedding_dim, 1),
         )
@@ -44,6 +55,7 @@ class BaselineGNN(pl.LightningModule):
         h_l = self.lig_gnn(lig.x, lig.edge_index, lig.edge_attr)
         
         #vettore di embedding del grafo: media dei nodi (global mean pool) | h [N, emb_dim] -> h [batch_size, emb_dim]
+        
         h_p = global_mean_pool(h_p, prot.batch)
         h_l = global_mean_pool(h_l, lig.batch)
 

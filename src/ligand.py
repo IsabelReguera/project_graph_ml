@@ -103,10 +103,9 @@ class Ligand:
         sia i legami "falsi" basati sulla vicinanza spaziale (entro il cutoff).
         
         Feature di legame:
-            0: Tipo di legame (1=singolo, 1.5=arom, 2=doppio, 3=triplo, 0=falso/distanza)
+            0: Tipo di legame (2=singolo, 3=arom, 4=doppio, 6=triplo, 0=falso/distanza)
             1: Coniugazione (1 se coniugato, 0 altrimenti)
             2: Distanza 3D tra i due atomi (lunghezza arco)
-            3: Flag di validità (1 se è un legame chimico reale, 0 se è solo per vicinanza)
         """
         #legami reali 
         real_bonds = {}
@@ -136,15 +135,15 @@ class Ligand:
                     
                     if is_real_bond:
                         bond = real_bonds[(i, j)]
-                        bond_type = bond.GetBondTypeAsDouble()
+                        bond_type = bond.GetBondTypeAsDouble()*2 #per avere numeri interi (categoria)
                         is_conjugated = float(bond.GetIsConjugated())
-                        is_real = 1.0
+                        
                     else:
                         bond_type = 0.0     # Nessun legame chimico
                         is_conjugated = 0.0 # Non può essere coniugato
-                        is_real = 0.0       # Legame "falso" per vicinanza spaziale
                         
-                    edge_attrs.append([bond_type, is_conjugated, dist, is_real])
+                        
+                    edge_attrs.append([bond_type, is_conjugated, dist])
                     
         edge_index = torch.tensor([src, dst], dtype=torch.long)
         edge_attr = torch.tensor(edge_attrs, dtype=torch.float32)
