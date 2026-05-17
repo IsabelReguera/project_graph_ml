@@ -115,6 +115,7 @@ if __name__ == "__main__":
     
     print("\n--- INIZIO GENERAZIONE LIGANDI ---")
     ligand_dataset = PDBbindDataset(root='data', csv_path='data/raw/PL_cleaned_index.csv', mode='ligand', limit=1000, from_local_files=True)
+    
     # Allineamento dei dataset
     valid_proteins = set(protein_dataset.df['pdb_code'])
     valid_ligands = set(ligand_dataset.df['pdb_code'])

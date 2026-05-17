@@ -16,7 +16,7 @@ def main(config_path='config.yaml'):
     csv_path      = config['dataset']['PL_csv']
     batch_size    = config['training']['batch_size']
 
-    full_dataset = build_complex_dataset(processed_dir, csv_path, limit=200)
+    full_dataset = build_complex_dataset(processed_dir, csv_path, limit=1000)
     all_codes    = full_dataset.pdb_codes
 
     # Split train/val per codice PDB
