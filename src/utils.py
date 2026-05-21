@@ -30,7 +30,7 @@ PROTEIN_EDGE_SCHEMA = [
 ]
 
 LIGAND_EDGE_SCHEMA = [
-    {'type': 'categorical' , 'num_categories': 5},  # tipo legame (0/2/3/4/6) (2=singolo, 3=arom, 4=doppio, 6=triplo, 0=falso/distanza)
+    {'type': 'categorical' , 'num_categories': 5},  # tipo legame (0/1/2/3/4) (1=singolo, 2=doppio, 3=triplo, 4=aromatico, 0=falso/distanza)
     {'type': 'categorical', 'num_categories':2 },   # coniugazione (0=falso, 1=vero)
     {'type': 'continuous'},                         # distanza 3D in Å
 ]

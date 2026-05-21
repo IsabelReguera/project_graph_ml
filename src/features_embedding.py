@@ -1,187 +1,121 @@
 import torch
 import torch.nn as nn
+from torch_geometric.nn import MessagePassing
+from utils import DATASET_SCHEMAS
 
-class GraphEncoder(nn.Module):
-    """Encoder module that projects node and edge features to embeddings using feature-specific tokenization."""
-    
-    def __init__(self, node_schema, edge_schema, token_dim, node_hidden_sizes=None, edge_hidden_sizes=None, name=None):
-        """Constructor.
+PROTEIN_NODE_SCHEMA = DATASET_SCHEMAS['protein_node']
+LIGAND_NODE_SCHEMA = DATASET_SCHEMAS['ligand_node']
+PROTEIN_EDGE_SCHEMA = DATASET_SCHEMAS['protein_edge']
+LIGAND_EDGE_SCHEMA = DATASET_SCHEMAS['ligand_edge']
 
-        Args:
-          node_schema: list of dicts defining the type and parameters of each node feature column.
-          edge_schema: list of dicts defining the type and parameters of each edge feature column.
-          token_dim: int, the intermediate projection space for each individual feature (default: 32).
-          node_hidden_sizes: list of ints, hidden sizes of node encoder network.
-          edge_hidden_sizes: list of ints, hidden sizes of edge encoder network.
-          name: name of this module.
+
+class FeatureTokenizer(nn.Module):
+    """
+    Projects each feature individually into a token_dim space,
+    concatenates the tokens and aggregates them with a variable-depth MLP.
+
+    Continuous features:   Linear(1, token_dim)
+    Categorical features:  nn.Embedding(num_categories, token_dim)
+
+    Aggregation: Linear(N·token_dim, hidden_dim) -> ReLU -> ... -> Linear(..., hidden_dim[-1])
+    Output: [N_nodes, hidden_dim[-1]]
+    """
+
+    def __init__(self, schema, token_dim, mlp_hidden_layers=None):
         """
-        super(GraphEncoder, self).__init__()
-        self._node_schema = node_schema
-        self._edge_schema = edge_schema
-        self._token_dim = token_dim
-        self._node_hidden_sizes = node_hidden_sizes if node_hidden_sizes else None
-        self._edge_hidden_sizes = edge_hidden_sizes
-        
-        self._build_model()
+        Args:
+          schema: list of dicts {'type': 'continuous'|'categorical', ['num_categories': int]}
+          token_dim: projection dimension for each individual feature.
+          mlp_hidden_layers: list of ints for the MLP aggregator layer sizes (optional).
+            If None, forward returns the raw token concatenation [N, n_features * token_dim].
+        """
+        super().__init__()
+        self.schema = schema
+        n=len(schema)
 
-    def _build_model(self):
-        node_projectors = []
-        for feat in self._node_schema:
+        projectors = []
+        for feat in schema:
             if feat['type'] == 'continuous':
-                node_projectors.append(nn.Linear(1, self._token_dim))
+                projectors.append(nn.Linear(1, token_dim))
             elif feat['type'] == 'categorical':
-                node_projectors.append(nn.Embedding(feat['num_categories'], self._token_dim))
+                projectors.append(nn.Embedding(feat['num_categories'], token_dim))
             else:
-                raise ValueError(f"Unknown feature type: {feat['type']}")
-        self._node_projectors = nn.ModuleList(node_projectors)
+                raise ValueError(f"Tipo di feature sconosciuto: {feat['type']}")
+        self.projectors = nn.ModuleList(projectors)
 
-        if self._node_hidden_sizes is not None:
-            mlp_input_dim = len(self._node_schema) * self._token_dim
-            layer = [nn.Linear(mlp_input_dim, self._node_hidden_sizes[0])]
-            for i in range(1, len(self._node_hidden_sizes)):
-                layer.append(nn.ReLU())
-                layer.append(nn.Linear(self._node_hidden_sizes[i - 1], self._node_hidden_sizes[i]))
-            self.MLP1 = nn.Sequential(*layer)
+        if mlp_hidden_layers is not None:
+            mlp_input_dim = n * token_dim
+            n_layers = len(mlp_hidden_layers)
+            layers = [nn.Linear(mlp_input_dim, mlp_hidden_layers[0])]
+            for i in range(1, n_layers):
+                layers.append(nn.ReLU())
+                layers.append(nn.Linear(mlp_hidden_layers[i - 1], mlp_hidden_layers[i]))
+            self.mlp = nn.Sequential(*layers)
         else:
-            self.MLP1 = None
-
-
-        if self._edge_schema is not None and self._edge_hidden_sizes is not None:
-            edge_projectors = []
-            for feat in self._edge_schema:
-                if feat['type'] == 'continuous':
-                    edge_projectors.append(nn.Linear(1, self._token_dim))
-                elif feat['type'] == 'categorical':
-                    edge_projectors.append(nn.Embedding(feat['num_categories'], self._token_dim))
-                else:
-                    raise ValueError(f"Unknown feature type: {feat['type']}")
-            self._edge_projectors = nn.ModuleList(edge_projectors)
-
-            mlp_input_dim = len(self._edge_schema) * self._token_dim
-            layer = [nn.Linear(mlp_input_dim, self._edge_hidden_sizes[0])]
-            for i in range(1, len(self._edge_hidden_sizes)):
-                layer.append(nn.ReLU())
-                layer.append(nn.Linear(self._edge_hidden_sizes[i - 1], self._edge_hidden_sizes[i]))
-            self.MLP2 = nn.Sequential(*layer)
-        else:
-            self._edge_projectors = None
-            self.MLP2 = None
-
-    def _tokenize_features(self, features, schema, projectors):
-        """Helper method to slice columns and apply their respective embedding/linear layers."""
+            self.mlp = None
+    
+    def forward(self, x):
+        """
+        Args:
+          x: [N, n_features] float tensor. Categorical columns are float
+             but are cast to long internally.
+        Returns:
+          [N, mlp_hidden_layers[-1]] if MLP is present, else [N, n_features * token_dim].
+        """
         tokens = []
-        for i, (feat, proj) in enumerate(zip(schema, projectors)):
+        for i, (feat, proj) in enumerate(zip(self.schema, self.projectors)):
             if feat['type'] == 'categorical':
-                tokens.append(proj(features[:, i].long()))
+                tokens.append(proj(x[:, i].long()))
             else:
-                tokens.append(proj(features[:, i:i + 1]))
-        
-        return torch.cat(tokens, dim=-1)
+                tokens.append(proj(x[:, i:i + 1]))
 
-    def forward(self, node_features, edge_features=None):
-        """Encode node and edge features."""
-        
-        node_tokens = self._tokenize_features(node_features, self._node_schema, self._node_projectors)
-        node_outputs = self.MLP1(node_tokens) if self.MLP1 is not None else node_tokens
-            
-        
-        if edge_features is not None and self._edge_projectors is not None:
-            edge_tokens = self._tokenize_features(edge_features, self._edge_schema, self._edge_projectors)
-            edge_outputs = self.MLP2(edge_tokens) if self.MLP2 is not None else edge_tokens
-        else:
-            edge_outputs = edge_features
-
-        return node_outputs, edge_outputs
+        out = torch.cat(tokens, dim=-1)
+        return self.mlp(out) if self.mlp is not None else out
 
 
 class DualGraphTokenizer(nn.Module):
-    """Tokenizer module that projects protein and ligand features to a shared latent space 
-    using dynamically extracted feature schemas.
     """
-    
-    def __init__(self, 
-                 schemas_dict,
-                 node_protein_hidden_sizes, 
-                 edge_protein_hidden_sizes, 
-                 node_ligand_hidden_sizes, 
-                 edge_ligand_hidden_sizes,
-                 token_dim):
-        """Constructor.
-        
-        Args:
-          schemas_dict: dict, containing the 4 feature schemas extracted by utility function.
-            Expected keys: 'protein_node', 'protein_edge', 'ligand_node', 'ligand_edge'.
-          node_protein_hidden_sizes: list of ints, hidden sizes for the protein node encoder network.
-            The last element is the size of the final node embeddings.
-          edge_protein_hidden_sizes: list of ints, hidden sizes for the protein edge encoder network.
-            The last element is the size of the final edge embeddings.
-          node_ligand_hidden_sizes: list of ints, hidden sizes for the ligand node encoder network.
-          edge_ligand_hidden_sizes: list of ints, hidden sizes for the ligand edge encoder network.
-          token_dim: int, embedding dimension for individual continuous/categorical tokens.
+    Tokenizes nodes and edges of both protein and ligand graphs into the same
+    latent space using one FeatureTokenizer per tensor.
+    Receives and returns PyG Data/Batch objects with updated .x and .edge_attr.
+    """
+
+    def __init__(self, token_dim,
+                 node_protein_hidden_sizes, edge_protein_hidden_sizes,
+                 node_ligand_hidden_sizes, edge_ligand_hidden_sizes):
         """
-        super(DualGraphTokenizer, self).__init__()
-        
+        Args:
+          token_dim: individual projection dimension for each feature.
+          node_protein_hidden_sizes: list of ints for the protein node MLP.
+            The last element is the final protein node embedding dimension.
+          edge_protein_hidden_sizes: list of ints for the protein edge MLP.
+          node_ligand_hidden_sizes: list of ints for the ligand node MLP.
+          edge_ligand_hidden_sizes: list of ints for the ligand edge MLP.
+        """
+        super().__init__()
 
-        self._schemas_dict = schemas_dict
-        self._node_protein_hidden_sizes = node_protein_hidden_sizes
-        self._edge_protein_hidden_sizes = edge_protein_hidden_sizes
-        self._node_ligand_hidden_sizes = node_ligand_hidden_sizes
-        self._edge_ligand_hidden_sizes = edge_ligand_hidden_sizes
-        self._token_dim = token_dim
-
-       
-        self.protein_encoder = GraphEncoder(
-            node_schema=schemas_dict['protein_node'], 
-            edge_schema=schemas_dict['protein_edge'],  
-            token_dim=self._token_dim,
-            node_hidden_sizes=self._node_protein_hidden_sizes,
-            edge_hidden_sizes=self._edge_protein_hidden_sizes,
-            name='protein-encoder'
-        )
-        
-        
-        self.ligand_encoder = GraphEncoder(
-            node_schema=schemas_dict['ligand_node'], 
-            edge_schema=schemas_dict['ligand_edge'],  
-            token_dim=self._token_dim,
-            node_hidden_sizes=self._node_ligand_hidden_sizes,
-            edge_hidden_sizes=self._edge_ligand_hidden_sizes,
-            name='ligand-encoder'
-        )
+        self.protein_node_enc = FeatureTokenizer(PROTEIN_NODE_SCHEMA, token_dim, node_protein_hidden_sizes)
+        self.protein_edge_enc = FeatureTokenizer(PROTEIN_EDGE_SCHEMA, token_dim, edge_protein_hidden_sizes)
+        self.ligand_node_enc  = FeatureTokenizer(LIGAND_NODE_SCHEMA,  token_dim, node_ligand_hidden_sizes)
+        self.ligand_edge_enc  = FeatureTokenizer(LIGAND_EDGE_SCHEMA,  token_dim, edge_ligand_hidden_sizes)
 
     def forward(self, prot_batch_in, lig_batch_in):
-        """Encode node and edge features for both protein and ligand graphs.
-
-        Args:
-          prot_batch_in: PyG Data or Batch object representing the protein.
-          lig_batch_in: PyG Data or Batch object representing the ligand.
-
-        Returns:
-          prot_batch: Updated copy with embedded .x and .edge_attr tensors.
-          lig_batch: Updated copy with embedded .x and .edge_attr tensors.
         """
-        # Cloniamo i batch per evitare side-effects sui gradienti
+        Args:
+          prot_batch_in, lig_batch_in: PyG Data or Batch with .x and .edge_attr.
+        Returns:
+          prot_batch, lig_batch: copies with .x [N, node_dim] and .edge_attr [E, edge_dim] replaced by embeddings.
+        """
         prot_batch = prot_batch_in.clone()
-        lig_batch = lig_batch_in.clone()
-        
-        # Proiezione Proteina
-        prot_x, prot_edge = self.protein_encoder(prot_batch.x, prot_batch.edge_attr)
-        prot_batch.x = prot_x
-        prot_batch.edge_attr = prot_edge
-        
-        # Proiezione Ligando
-        lig_x, lig_edge = self.ligand_encoder(lig_batch.x, lig_batch.edge_attr)
-        lig_batch.x = lig_x
-        lig_batch.edge_attr = lig_edge
-        
+        lig_batch  = lig_batch_in.clone()
+
+        prot_batch.x         = self.protein_node_enc(prot_batch.x)
+        prot_batch.edge_attr = self.protein_edge_enc(prot_batch.edge_attr)
+        lig_batch.x          = self.ligand_node_enc(lig_batch.x)
+        lig_batch.edge_attr  = self.ligand_edge_enc(lig_batch.edge_attr)
+
         return prot_batch, lig_batch
 
-
-
-
-import torch
-import torch.nn as nn
-from torch_geometric.nn import MessagePassing
 
 class GraphPropLayer(MessagePassing):
     
