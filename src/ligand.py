@@ -103,7 +103,7 @@ class Ligand:
         sia i legami "falsi" basati sulla vicinanza spaziale (entro il cutoff).
         
         Feature di legame:
-            0: Tipo di legame (2=singolo, 3=arom, 4=doppio, 6=triplo, 0=falso/distanza)
+            0: Tipo di legame (1=singolo, 2=doppio, 3=triplo, 4=aromatico, 0=falso/distanza)
             1: Coniugazione (1 se coniugato, 0 altrimenti)
             2: Distanza 3D tra i due atomi (lunghezza arco)
         """
@@ -135,7 +135,9 @@ class Ligand:
                     
                     if is_real_bond:
                         bond = real_bonds[(i, j)]
-                        bond_type = bond.GetBondTypeAsDouble()*2 #per avere numeri interi (categoria)
+                        bond_type = bond.GetBondTypeAsDouble()
+                        if bond_type == 1.5:  # correggo indice aromatico per avere indici interi (1=singolo, 2=doppio, 3=triplo, 4=aromatico)
+                            bond_type = 4.0
                         is_conjugated = float(bond.GetIsConjugated())
                         
                     else:

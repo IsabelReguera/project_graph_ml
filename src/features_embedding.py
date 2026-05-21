@@ -1,5 +1,15 @@
 import torch
 import torch.nn as nn
+from utils import DATASET_SCHEMAS
+
+# ---------------------------------------------------------------------------
+# Schemi feature -> un dizionario per ogni feature, nell'ordine delle colonne
+# ---------------------------------------------------------------------------
+
+PROTEIN_NODE_SCHEMA = DATASET_SCHEMAS['protein_node']
+LIGAND_NODE_SCHEMA = DATASET_SCHEMAS['ligand_node']
+PROTEIN_EDGE_SCHEMA = DATASET_SCHEMAS['protein_edge']
+LIGAND_EDGE_SCHEMA = DATASET_SCHEMAS['ligand_edge']
 
 class GraphEncoder(nn.Module):
     """Encoder module that projects node and edge features to embeddings using feature-specific tokenization."""
