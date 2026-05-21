@@ -42,13 +42,16 @@ def main(config_path='config.yaml'):
     )
 
     print(f"Train: {len(train_ds)} complessi | Val: {len(val_ds)} complessi")
-    """
-        model = BaselineGNN(
-            token_dim=config['model']['token_dim'],
-            node_embedding_dim=config['model']['node_embedding_dim'],
-            edge_embedding_dim=config['model']['edge_embedding_dim'],
-            lr=config['model']['lr'],
-        )
+
+    model = BaselineGNN(
+        token_dim=config['model']['token_dim'],
+        node_embedding_dim=config['model']['node_embedding_dim'],
+        edge_embedding_dim=config['model']['edge_embedding_dim'],
+        dropout_p=0.0, # Per la baseline, niente dropout
+        normalization=False, # LayerNorm prima di ReLU
+        lr=config['model']['lr'],
+    )
+
     """
     model = GraphMatchingNetwork( # INVECE DI BaselineGNN
     token_dim=config['model']['token_dim'],
@@ -56,7 +59,8 @@ def main(config_path='config.yaml'):
     edge_embedding_dim=config['model']['edge_embedding_dim'],
     num_layers=3, # Puoi regolarlo da config se vuoi
     lr=config['model']['lr'],
-)
+    )
+    """
 
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
