@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 
 from complex_dataset import ComplexDataset, complex_collate_fn, build_complex_dataset
 from baseline import BaselineGNN
+from graphmatchingnetwork import GraphMatchingNetwork
 
 
 def main(config_path='config.yaml'):
@@ -41,13 +42,21 @@ def main(config_path='config.yaml'):
     )
 
     print(f"Train: {len(train_ds)} complessi | Val: {len(val_ds)} complessi")
-
-    model = BaselineGNN(
-        token_dim=config['model']['token_dim'],
-        node_embedding_dim=config['model']['node_embedding_dim'],
-        edge_embedding_dim=config['model']['edge_embedding_dim'],
-        lr=config['model']['lr'],
-    )
+    """
+        model = BaselineGNN(
+            token_dim=config['model']['token_dim'],
+            node_embedding_dim=config['model']['node_embedding_dim'],
+            edge_embedding_dim=config['model']['edge_embedding_dim'],
+            lr=config['model']['lr'],
+        )
+    """
+    model = GraphMatchingNetwork( # INVECE DI BaselineGNN
+    token_dim=config['model']['token_dim'],
+    node_embedding_dim=config['model']['node_embedding_dim'],
+    edge_embedding_dim=config['model']['edge_embedding_dim'],
+    num_layers=3, # Puoi regolarlo da config se vuoi
+    lr=config['model']['lr'],
+)
 
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
