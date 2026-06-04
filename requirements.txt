@@ -1,6 +1,7 @@
 cpdb
 torch==2.11.0
 torch_geometric==2.7.0
+pytorch-lightning
 graphein==1.7.8
 networkx==3.6.1
 biopandas==0.5.1
@@ -10,3 +11,6 @@ pandas
 numpy
 matplotlib
 rdkit
+scikit-learn
+pyyaml
+plotly

@@ -50,11 +50,11 @@ def main(config_path='config.yaml'):
             lr=config['model']['lr'],
         )
     """
-    model = GraphMatchingNetwork( # INVECE DI BaselineGNN
+    model = GraphMatchingNetwork( 
     token_dim=config['model']['token_dim'],
     node_embedding_dim=config['model']['node_embedding_dim'],
     edge_embedding_dim=config['model']['edge_embedding_dim'],
-    num_layers=3, # Puoi regolarlo da config se vuoi
+    num_layers=3, 
     lr=config['model']['lr'],
 )
 
