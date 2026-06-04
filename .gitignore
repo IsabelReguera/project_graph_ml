@@ -224,6 +224,7 @@ data/processed/
 
 #logs
 lightning_logs/
+experiment_logs/
 
 # Ignora cache di Python
 __pycache__/

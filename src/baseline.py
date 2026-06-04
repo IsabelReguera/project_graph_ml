@@ -12,7 +12,7 @@ class BaselineGNN(pl.LightningModule):
         DualFeatureTokenizer → GINEConv -> mean pool -> MLP -> pAffinity
     """
     
-    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, lr=1e-3):
+    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, lr=1e-3,normalization=True, dropout_p=0.1):
         super().__init__()
         self.save_hyperparameters() #salva tutti gli hyperparam passati al costruttore, accessibili via self.hparams
 
@@ -31,11 +31,15 @@ class BaselineGNN(pl.LightningModule):
                 nn.Linear(node_embedding_dim, node_embedding_dim),
             ), edge_dim=edge_embedding_dim
         )
-        self.mlp= nn.Sequential(
-            nn.Linear(2 * node_embedding_dim, node_embedding_dim),
+        mlp_layers = [nn.Linear(2 * node_embedding_dim, node_embedding_dim)]
+        if normalization:
+            mlp_layers.append(nn.LayerNorm(node_embedding_dim))
+        mlp_layers += [
             nn.ReLU(),
-            nn.Linear(node_embedding_dim, 1),
-        )
+            nn.Dropout(dropout_p),
+            nn.Linear(node_embedding_dim, 1)
+        ]
+        self.mlp = nn.Sequential(*mlp_layers)
         
     def forward(self, prot_batch, lig_batch):
         prot, lig = self.tokenizer(prot_batch, lig_batch)
