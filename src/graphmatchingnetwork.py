@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from torch_geometric.nn import global_mean_pool
 
 #from features_embedding import DualGraphTokenizer
-from feature_tokenizer import DualGraphTokenizer
+from feature_tokenizer import DualFeatureTokenizer
 from utils import DATASET_SCHEMAS
 from gmn_layers import GMNLayer
 
@@ -16,7 +16,7 @@ class GraphMatchingNetwork(pl.LightningModule):
         DualFeatureTokenizer → [GMNLayer x num_layers] → mean pool → MLP → pAffinity
     
     """
-    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, num_layers=3, lr=1e-3):
+    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, num_layers=2, lr=1e-3):
         super().__init__()
         self.save_hyperparameters()
         
@@ -37,7 +37,7 @@ class GraphMatchingNetwork(pl.LightningModule):
             token_dim=token_dim
         )"""
         #tokenizer baseline 
-        self.tokenizer = DualGraphTokenizer(token_dim, node_embedding_dim, edge_embedding_dim)
+        self.tokenizer = DualFeatureTokenizer(token_dim, node_embedding_dim, edge_embedding_dim)
         #mettiamo in fila num_layers (parametro) GMNLayer
         self.gmn_layers = nn.ModuleList([
             GMNLayer(node_embedding_dim, edge_embedding_dim) 

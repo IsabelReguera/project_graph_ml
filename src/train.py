@@ -43,7 +43,7 @@ def main(config_path='config.yaml'):
 
     print(f"Train: {len(train_ds)} complessi | Val: {len(val_ds)} complessi")
 
-    model = BaselineGNN(
+    """model = BaselineGNN(
         token_dim=config['model']['token_dim'],
         node_embedding_dim=config['model']['node_embedding_dim'],
         edge_embedding_dim=config['model']['edge_embedding_dim'],
@@ -51,16 +51,16 @@ def main(config_path='config.yaml'):
         normalization=False, # LayerNorm prima di ReLU
         lr=config['model']['lr'],
     )
-
     """
+    
     model = GraphMatchingNetwork( 
-    token_dim=config['model']['token_dim'],
-    node_embedding_dim=config['model']['node_embedding_dim'],
-    edge_embedding_dim=config['model']['edge_embedding_dim'],
-    num_layers=3, 
-    lr=config['model']['lr'],
+        token_dim=config['model']['token_dim'],
+        node_embedding_dim=config['model']['node_embedding_dim'],
+        edge_embedding_dim=config['model']['edge_embedding_dim'],
+        num_layers=2, 
+        lr=config['model']['lr'],
     )
-    """
+    
 
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
@@ -72,4 +72,5 @@ def main(config_path='config.yaml'):
 
 
 if __name__ == '__main__':
+    #PER RUNNARE -> cartella repository in terminale, poi: python src/train.py
     main()
