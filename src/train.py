@@ -38,7 +38,7 @@ def main(config_path='config.yaml'):
         batch_size=batch_size, 
         shuffle=False,
         collate_fn=complex_collate_fn,
-        num_workers=0,
+        num_workers=4,
     )
 
     print(f"Train: {len(train_ds)} complessi | Val: {len(val_ds)} complessi")

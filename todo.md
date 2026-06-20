@@ -114,59 +114,22 @@ python -m src.train --model baseline --limit 100   # overfitting su 100 sample �
 python -m src.train --model gmn    --limit 100     # stesso test con cross-attention
 
 
-### encoder.py
-import torch.nn as nn
+# Note di design (non bug, ma da valutare)
+Aspetto	Attuale	Alternativa
+Q/K/V projectors	Condivisi tra proteina e ligando	Separati per i due domini
+Connessioni residuali	Assenti	h_new = h_old + f(...) per stabilità
+Normalizzazione	Assente tra i layer	LayerNorm dopo ogni GMNLayer (come nella baseline)
+Edge features nei layer successivi	Invariate (solo .x viene aggiornato)	Aggiornamento degli archi a ogni layer
+Vuoi che corregga i due bug direttamente nel codice?
+
+## edge features
+Ad ogni iterazione, solo prot.x e lig.x (i vettori dei nodi) vengono aggiornati. prot.edge_attr e lig.edge_attr (i vettori degli archi) rimangono sempre quelli prodotti dal tokenizer all'inizio — layer 1, layer 2, layer 3 usano tutti le stesse edge features originali.
+
+Questo è il comportamento standard della maggior parte delle GNN: i nodi si "parlano" e si aggiornano, gli archi restano statici. Nel tuo caso non è un problema — le edge features (distanza, tipo di legame) sono proprietà geometriche fisse della molecola e ha senso non modificarle.
+
+L'alternativa "aggiornamento degli archi" prevederebbe un MLP separato che, a ogni layer, ricalcola edge_attr in funzione dei nodi sorgente e destinazione aggiornati:
 
 
-class NodeEncoder(nn.Module):
-    def __init__(self, in_dim, hidden_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-class EdgeEncoder(nn.Module):
-    def __init__(self, in_dim, edge_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, edge_dim),
-            nn.ReLU(),
-        )
-
-    def forward(self, edge_attr):
-        return self.net(edge_attr)
-
-
-class ProteinEncoder(nn.Module):
-    """
-    Proietta nodi proteina (9 feature) e archi proteina (2 feature)
-    nello spazio latente condiviso (hidden_dim, edge_dim).
-    """
-
-    def __init__(self, hidden_dim=128, edge_dim=64):
-        super().__init__()
-        self.node_enc = NodeEncoder(9, hidden_dim)
-        self.edge_enc = EdgeEncoder(2, edge_dim)
-
-    def forward(self, x, edge_attr):
-        return self.node_enc(x), self.edge_enc(edge_attr)
-
-
-class LigandEncoder(nn.Module):
-    """
-    Proietta nodi ligando (7 feature) e archi ligando (4 feature)
-    nello spazio latente condiviso (hidden_dim, edge_dim).
-    """
-
-    def __init__(self, hidden_dim=128, edge_dim=64):
-        super().__init__()
-        self.node_enc = NodeEncoder(7, hidden_dim)
-        self.edge_enc = EdgeEncoder(4, edge_dim)
-
-    def forward(self, x, edge_attr):
-        return self.node_enc(x), self.edge_enc(edge_attr)
+# esempio concettuale
+new_edge_attr = f(x[src], x[dst], old_edge_attr)
+Questo è ciò che fa ad esempio MPNN (Gilmer et al. 2017), ma per il tuo task è probabilmente superfluo.

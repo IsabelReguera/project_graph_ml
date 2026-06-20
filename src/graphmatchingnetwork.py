@@ -3,7 +3,8 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from torch_geometric.nn import global_mean_pool
 
-from features_embedding import DualGraphTokenizer
+#from features_embedding import DualGraphTokenizer
+from feature_tokenizer import DualGraphTokenizer
 from utils import DATASET_SCHEMAS
 from gmn_layers import GMNLayer
 
@@ -19,15 +20,24 @@ class GraphMatchingNetwork(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         
-        self.tokenizer = DualGraphTokenizer(
+        """ ho messo sotto lo stessso tokenizer che usa la baseline baseline(temporaneo è corretto quello in features_embedding.py) 
+            sono uguali ma questo ha un solo layer quindi 
+                - node_embedding_dim e edge_embedding_dim sono interi e non liste 
+                se vuoi usare il tokenizer di features_embedding.py aggirna anche quello nella baseline e 
+                occhio ai parametri che vengono passati al costruttore nel train (sono liste di interi)!!
+                è una cavolata ma va modificato il anche altro perchè node/edge embedding dimi viene usato da altre parti come intero,poi fixo
+            ho messo questo per semplicità
+        
+        self.tokenizer = DualGraphTokenizer(  
             schemas_dict=DATASET_SCHEMAS,
-            node_protein_hidden_sizes=[node_embedding_dim],
+            node_protein_hidden_sizes=[node_embedding_dim], 
             edge_protein_hidden_sizes=[edge_embedding_dim],
             node_ligand_hidden_sizes=[node_embedding_dim],
             edge_ligand_hidden_sizes=[edge_embedding_dim],
             token_dim=token_dim
-        )
-        
+        )"""
+        #tokenizer baseline 
+        self.tokenizer = DualGraphTokenizer(token_dim, node_embedding_dim, edge_embedding_dim)
         #mettiamo in fila num_layers (parametro) GMNLayer
         self.gmn_layers = nn.ModuleList([
             GMNLayer(node_embedding_dim, edge_embedding_dim) 
