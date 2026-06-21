@@ -3,8 +3,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from torch_geometric.nn import global_mean_pool
 
-#from features_embedding import DualGraphTokenizer
-from feature_tokenizer import DualFeatureTokenizer
+from features_embedding import DualGraphTokenizer
 from utils import DATASET_SCHEMAS
 from gmn_layers import GMNLayer
 
@@ -16,41 +15,36 @@ class GraphMatchingNetwork(pl.LightningModule):
         DualFeatureTokenizer → [GMNLayer x num_layers] → mean pool → MLP → pAffinity
     
     """
-    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, num_layers=2, lr=1e-3):
+    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64,
+                 num_layers=3, lr=1e-3, dropout_p=0.1, normalization=True):
         super().__init__()
         self.save_hyperparameters()
-        
-        """ ho messo sotto lo stessso tokenizer che usa la baseline baseline(temporaneo è corretto quello in features_embedding.py) 
-            sono uguali ma questo ha un solo layer quindi 
-                - node_embedding_dim e edge_embedding_dim sono interi e non liste 
-                se vuoi usare il tokenizer di features_embedding.py aggirna anche quello nella baseline e 
-                occhio ai parametri che vengono passati al costruttore nel train (sono liste di interi)!!
-                è una cavolata ma va modificato il anche altro perchè node/edge embedding dimi viene usato da altre parti come intero,poi fixo
-            ho messo questo per semplicità
-        
-        self.tokenizer = DualGraphTokenizer(  
+
+        self.tokenizer = DualGraphTokenizer(
             schemas_dict=DATASET_SCHEMAS,
-            node_protein_hidden_sizes=[node_embedding_dim], 
+            node_protein_hidden_sizes=[node_embedding_dim],
             edge_protein_hidden_sizes=[edge_embedding_dim],
             node_ligand_hidden_sizes=[node_embedding_dim],
             edge_ligand_hidden_sizes=[edge_embedding_dim],
             token_dim=token_dim
-        )"""
-        #tokenizer baseline 
-        self.tokenizer = DualFeatureTokenizer(token_dim, node_embedding_dim, edge_embedding_dim)
-        #mettiamo in fila num_layers (parametro) GMNLayer
+        )
+
         self.gmn_layers = nn.ModuleList([
-            GMNLayer(node_embedding_dim, edge_embedding_dim) 
+            GMNLayer(node_embedding_dim, edge_embedding_dim,
+                     dropout_p=dropout_p, use_norm=normalization)
             for _ in range(num_layers)
         ])
-        
-        #TODO: valutare se aggiungere layer norm come nella baseline e GELU invece di ReLU
-        self.mlp = nn.Sequential(
-            nn.Linear(2 * node_embedding_dim, node_embedding_dim),
+
+        # Identico al prediction MLP del Baseline per confronto equo
+        mlp_layers = [nn.Linear(2 * node_embedding_dim, node_embedding_dim)]
+        if normalization:
+            mlp_layers.append(nn.LayerNorm(node_embedding_dim))
+        mlp_layers += [
             nn.ReLU(),
-            nn.Dropout(0.2), 
+            nn.Dropout(dropout_p),
             nn.Linear(node_embedding_dim, 1),
-        )
+        ]
+        self.mlp = nn.Sequential(*mlp_layers)
         
     def forward(self, prot_batch, lig_batch):
         #Proiezione nello spazio comune

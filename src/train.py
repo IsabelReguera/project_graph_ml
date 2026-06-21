@@ -53,13 +53,17 @@ def main(config_path='config.yaml'):
     )
     """
     
-    model = GraphMatchingNetwork( 
+    
+    model = GraphMatchingNetwork(
         token_dim=config['model']['token_dim'],
         node_embedding_dim=config['model']['node_embedding_dim'],
         edge_embedding_dim=config['model']['edge_embedding_dim'],
-        num_layers=2, 
+        num_layers=3,
         lr=config['model']['lr'],
+        dropout_p=config['model']['dropout_p'],
+        normalization=config['model']['normalization'],
     )
+    
     
 
     trainer = pl.Trainer(

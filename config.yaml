@@ -9,6 +9,8 @@ model:
   node_embedding_dim: 48
   edge_embedding_dim: 32
   lr: 0.0005
+  dropout_p: 0.1
+  normalization: true
 
 training:
   batch_size: 16

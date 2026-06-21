@@ -70,9 +70,9 @@ class GMNLayer(nn.Module):
     Un singolo strato della Graph Matching Network (Equazione 5 del paper).
     Esegue il message passing interno (GINEConv) e poi lo incrocia con la Cross-Attention.
     """
-    def __init__(self, node_dim, edge_dim):
+    def __init__(self, node_dim, edge_dim, dropout_p=0.1, use_norm=True):
         super().__init__()
-        
+
         # 1. Message Passing Interno (uguale alla baseline)
         self.intra_prot = GINEConv(
             nn.Sequential(
@@ -88,20 +88,22 @@ class GMNLayer(nn.Module):
                 nn.Linear(node_dim, node_dim)
             ), edge_dim=edge_dim
         )
-        
+
         # 2. Matching Esterno
         self.cross_attention = CrossGraphAttention(node_dim)
-        
+
         # 3. Aggiornamento finale del nodo
         # Prende in input: Nodo attuale + Messaggi Vicini + (Nodo attuale - Attenzione Opposta)
-        self.update_prot = nn.Sequential(
-            nn.Linear(node_dim * 3, node_dim),
-            nn.ReLU()
-        )
-        self.update_lig = nn.Sequential(
-            nn.Linear(node_dim * 3, node_dim),
-            nn.ReLU()
-        )
+        # Linear → ReLU → [LayerNorm] → [Dropout]
+        def _update_mlp():
+            layers = [nn.Linear(node_dim * 3, node_dim), nn.ReLU()]
+            if use_norm:
+                layers.append(nn.LayerNorm(node_dim))
+            layers.append(nn.Dropout(dropout_p))
+            return nn.Sequential(*layers)
+
+        self.update_prot = _update_mlp()
+        self.update_lig  = _update_mlp()
 
     def forward(self, x_prot, edge_idx_prot, edge_attr_prot, batch_prot,
                       x_lig, edge_idx_lig, edge_attr_lig, batch_lig):
