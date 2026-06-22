@@ -117,7 +117,7 @@ python -m src.train --model gmn    --limit 100     # stesso test con cross-atten
 # Note di design (non bug, ma da valutare)
 Aspetto	Attuale	Alternativa
 Q/K/V projectors	Condivisi tra proteina e ligando	Separati per i due domini
-Connessioni residuali	Assenti	h_new = h_old + f(...) per stabilità
+CONNESSIONI RESIDUALI	Assenti	h_new = h_old + f(...) per stabilità !!!!!
 Normalizzazione	Assente tra i layer	LayerNorm dopo ogni GMNLayer (come nella baseline)
 Edge features nei layer successivi	Invariate (solo .x viene aggiornato)	Aggiornamento degli archi a ogni layer
 Vuoi che corregga i due bug direttamente nel codice?

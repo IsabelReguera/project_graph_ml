@@ -47,9 +47,10 @@ class FeatureTokenizer(nn.Module):
             mlp_input_dim = n * token_dim
             n_layers = len(mlp_hidden_layers)
             layers = [nn.Linear(mlp_input_dim, mlp_hidden_layers[0])]
-            for i in range(0, n_layers):
-                layers.append(nn.ReLU())
+            layers.append(nn.ReLU())
+            for i in range(1, n_layers):
                 layers.append(nn.Linear(mlp_hidden_layers[i - 1], mlp_hidden_layers[i]))
+                layers.append(nn.ReLU())
             self.mlp = nn.Sequential(*layers)
         else:
             self.mlp = None

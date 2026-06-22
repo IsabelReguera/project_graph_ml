@@ -94,12 +94,13 @@ class GMNLayer(nn.Module):
 
         # 3. Aggiornamento finale del nodo
         # Prende in input: Nodo attuale + Messaggi Vicini + (Nodo attuale - Attenzione Opposta)
-        # Linear → ReLU → [LayerNorm] → [Dropout]
+        # Linear -> [LayerNorm]-> ReLU-> [Dropout]
         def _update_mlp():
-            layers = [nn.Linear(node_dim * 3, node_dim), nn.ReLU()]
+            layers = [nn.Linear(node_dim * 3, node_dim)]
             if use_norm:
                 layers.append(nn.LayerNorm(node_dim))
-            layers.append(nn.Dropout(dropout_p))
+            layers.append(nn.ReLU())
+            #layers.append(nn.Dropout(dropout_p)) dropout come ultimo layer qua può fare casino
             return nn.Sequential(*layers)
 
         self.update_prot = _update_mlp()
