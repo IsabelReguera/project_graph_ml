@@ -1,8 +1,10 @@
 # Configurazione per dataset, modello e training.
 
-dataset:
-  PL_csv: "data/raw/PL_cleaned_index.csv"
+data:
+  csv_path: "data/raw/PL_cleaned_index.csv"
   processed_dir: "data/processed"
+  limit: 1000
+  seed: 47
 
 model:
   token_dim: 16

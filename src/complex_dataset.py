@@ -44,13 +44,18 @@ def build_complex_dataset(processed_dir, csv_path, limit=None):
     if limit is not None:
         df = df.iloc[:limit]
 
+    print(f"Building ComplexDataset...")
+    #potenziale aggiunta creazione .pt mancanti, attualmente utilizza solo quelli già presenti (creati da pdbbind_dataset.py)
+
     valid_codes = []
     for code in df['pdb_code']:
         p_path = os.path.join(processed_dir, f'protein_{code}.pt')
         l_path = os.path.join(processed_dir, f'ligand_{code}.pt')
         if os.path.exists(p_path) and os.path.exists(l_path):
             valid_codes.append(code)
-
+    
+    print(f"Found {len(valid_codes)} valid complexes {('out of ' + str(limit)) if limit is not None else ''}")
+    print(f"ComplexDataset[{len(valid_codes)}] built")
     return ComplexDataset(processed_dir, valid_codes)
 
 
