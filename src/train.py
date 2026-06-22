@@ -43,18 +43,18 @@ def main(config_path='config.yaml'):
 
     print(f"Train: {len(train_ds)} complessi | Val: {len(val_ds)} complessi")
 
-    """model = BaselineGNN(
+    model = BaselineGNN(
         token_dim=config['model']['token_dim'],
-        node_embedding_dim=config['model']['node_embedding_dim'],
-        edge_embedding_dim=config['model']['edge_embedding_dim'],
+        node_embedding_dims=[config['model']['node_embedding_dim']],
+        edge_embedding_dims=[config['model']['edge_embedding_dim']],
         dropout_p=0.0, # Per la baseline, niente dropout
         normalization=False, # LayerNorm prima di ReLU
         lr=config['model']['lr'],
     )
-    """
     
     
-    model = GraphMatchingNetwork(
+    
+    """model = GraphMatchingNetwork(
         token_dim=config['model']['token_dim'],
         node_embedding_dim=config['model']['node_embedding_dim'],
         edge_embedding_dim=config['model']['edge_embedding_dim'],
@@ -62,7 +62,7 @@ def main(config_path='config.yaml'):
         lr=config['model']['lr'],
         dropout_p=config['model']['dropout_p'],
         normalization=config['model']['normalization'],
-    )
+    )"""
     
     
 

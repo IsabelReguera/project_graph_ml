@@ -83,7 +83,7 @@ class DualFeatureTokenizer(nn.Module):
     def forward(self, prot_batch_in, lig_batch_in):
         """
         prot_batch_in, lig_batch_in: PyG Data o Batch con .x e .edge_attr.
-        Restituisce copie con .x [N, hidden_dim] e .edge_attr [E, edge_dim].
+        Restituisce copie con .x [N, node_embedding_dim] e .edge_attr [E, edge_embedding_dim].
         """
         prot_batch = prot_batch_in.clone()
         lig_batch  = lig_batch_in.clone()

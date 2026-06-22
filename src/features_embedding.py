@@ -47,7 +47,7 @@ class FeatureTokenizer(nn.Module):
             mlp_input_dim = n * token_dim
             n_layers = len(mlp_hidden_layers)
             layers = [nn.Linear(mlp_input_dim, mlp_hidden_layers[0])]
-            for i in range(1, n_layers):
+            for i in range(0, n_layers):
                 layers.append(nn.ReLU())
                 layers.append(nn.Linear(mlp_hidden_layers[i - 1], mlp_hidden_layers[i]))
             self.mlp = nn.Sequential(*layers)
@@ -86,8 +86,8 @@ class DualGraphTokenizer(nn.Module):
         """
         Args:
           token_dim: individual projection dimension for each feature.
+           The last element is the final protein node embedding dimension.
           node_protein_hidden_sizes: list of ints for the protein node MLP.
-            The last element is the final protein node embedding dimension.
           edge_protein_hidden_sizes: list of ints for the protein edge MLP.
           node_ligand_hidden_sizes: list of ints for the ligand node MLP.
           edge_ligand_hidden_sizes: list of ints for the ligand edge MLP.

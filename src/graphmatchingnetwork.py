@@ -15,34 +15,36 @@ class GraphMatchingNetwork(pl.LightningModule):
         DualFeatureTokenizer → [GMNLayer x num_layers] → mean pool → MLP → pAffinity
     
     """
-    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64,
-                 num_layers=3, lr=1e-3, dropout_p=0.1, normalization=True):
+    def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
+                 num_layers=2, lr=1e-3, dropout_p=0.1, normalization=True):
         super().__init__()
         self.save_hyperparameters()
+        
+        self.node_embedding_dim = node_embedding_dims[-1]
+        self.edge_embedding_dim = edge_embedding_dims[-1]   
 
         self.tokenizer = DualGraphTokenizer(
-            schemas_dict=DATASET_SCHEMAS,
-            node_protein_hidden_sizes=[node_embedding_dim],
-            edge_protein_hidden_sizes=[edge_embedding_dim],
-            node_ligand_hidden_sizes=[node_embedding_dim],
-            edge_ligand_hidden_sizes=[edge_embedding_dim],
-            token_dim=token_dim
+            token_dim=token_dim,
+            node_ligand_hidden_sizes=node_embedding_dims,
+            edge_ligand_hidden_sizes=edge_embedding_dims,
+            node_protein_hidden_sizes=node_embedding_dims,
+            edge_protein_hidden_sizes=edge_embedding_dims
         )
 
         self.gmn_layers = nn.ModuleList([
-            GMNLayer(node_embedding_dim, edge_embedding_dim,
+            GMNLayer(self.node_embedding_dim, self.edge_embedding_dim,
                      dropout_p=dropout_p, use_norm=normalization)
             for _ in range(num_layers)
         ])
 
         # Identico al prediction MLP del Baseline per confronto equo
-        mlp_layers = [nn.Linear(2 * node_embedding_dim, node_embedding_dim)]
+        mlp_layers = [nn.Linear(2 * self.node_embedding_dim, self.node_embedding_dim)]
         if normalization:
-            mlp_layers.append(nn.LayerNorm(node_embedding_dim))
+            mlp_layers.append(nn.LayerNorm(self.node_embedding_dim))
         mlp_layers += [
             nn.ReLU(),
             nn.Dropout(dropout_p),
-            nn.Linear(node_embedding_dim, 1),
+            nn.Linear(self.node_embedding_dim, 1),
         ]
         self.mlp = nn.Sequential(*mlp_layers)
         

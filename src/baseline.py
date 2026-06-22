@@ -2,54 +2,71 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torch_geometric.nn import GINEConv, global_mean_pool
-from feature_tokenizer import DualFeatureTokenizer
+from features_embedding import DualGraphTokenizer
 
 
 class BaselineGNN(pl.LightningModule):
     """
     Baseline: due GNN indipendenti (proteina e ligando) senza comunicazione.
     Architettura:
-        DualFeatureTokenizer → GINEConv -> mean pool -> MLP -> pAffinity
+        DualGraphTokenizer → GINEConv -> mean pool -> MLP -> pAffinity
     """
     
-    def __init__(self, token_dim=32, node_embedding_dim=128, edge_embedding_dim=64, lr=1e-3,normalization=True, dropout_p=0.1):
+    def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64], num_layers=1, lr=1e-3, normalization=True, dropout_p=0.1):
         super().__init__()
         self.save_hyperparameters() #salva tutti gli hyperparam passati al costruttore, accessibili via self.hparams
 
-        self.tokenizer = DualFeatureTokenizer(token_dim, node_embedding_dim, edge_embedding_dim)
-        self.prot_gnn = GINEConv(
-            nn.Sequential(
-                nn.Linear(node_embedding_dim, node_embedding_dim),
-                nn.ReLU(),
-                nn.Linear(node_embedding_dim, node_embedding_dim),
-            ), edge_dim=edge_embedding_dim
+        self.node_embedding_dim = node_embedding_dims[-1]
+        self.edge_embedding_dim = edge_embedding_dims[-1]
+
+        self.tokenizer = DualGraphTokenizer(
+            token_dim, 
+            node_ligand_hidden_sizes=node_embedding_dims, 
+            edge_ligand_hidden_sizes=edge_embedding_dims,
+            node_protein_hidden_sizes=node_embedding_dims,
+            edge_protein_hidden_sizes=edge_embedding_dims
         )
-        self.lig_gnn  = GINEConv(
-            nn.Sequential(
-                nn.Linear(node_embedding_dim, node_embedding_dim),
-                nn.ReLU(),
-                nn.Linear(node_embedding_dim, node_embedding_dim),
-            ), edge_dim=edge_embedding_dim
-        )
-        mlp_layers = [nn.Linear(2 * node_embedding_dim, node_embedding_dim)]
+        self.prot_gnn_layers = nn.ModuleList([
+            GINEConv(
+                nn.Sequential(
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                ), edge_dim=self.edge_embedding_dim
+            ) for _ in range(num_layers) 
+        ])
+        
+        self.lig_gnn_layers  = nn.ModuleList([
+            GINEConv(
+                nn.Sequential(
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                ), edge_dim=self.edge_embedding_dim
+            ) for _ in range(num_layers)
+        ])
+        
+        mlp_layers = [nn.Linear(2 * self.node_embedding_dim, self.node_embedding_dim)]
         if normalization:
-            mlp_layers.append(nn.LayerNorm(node_embedding_dim))
+            mlp_layers.append(nn.LayerNorm(self.node_embedding_dim))
         mlp_layers += [
             nn.ReLU(),
             nn.Dropout(dropout_p),
-            nn.Linear(node_embedding_dim, 1)
+            nn.Linear(self.node_embedding_dim, 1)
         ]
         self.mlp = nn.Sequential(*mlp_layers)
         
     def forward(self, prot_batch, lig_batch):
         prot, lig = self.tokenizer(prot_batch, lig_batch)
 
-        h_p = self.prot_gnn(prot.x, prot.edge_index, prot.edge_attr)
-        h_l = self.lig_gnn(lig.x, lig.edge_index, lig.edge_attr)
-        
-        #vettore di embedding del grafo: media dei nodi (global mean pool) | h [N, emb_dim] -> h [batch_size, emb_dim]
-        h_p = global_mean_pool(h_p, prot.batch)
-        h_l = global_mean_pool(h_l, lig.batch)
+        for layer in self.prot_gnn_layers:
+            prot.x = layer(prot.x, prot.edge_index, prot.edge_attr)
+        for layer in self.lig_gnn_layers:
+            lig.x = layer(lig.x, lig.edge_index, lig.edge_attr)
+       
+        # pool) | h [N, emb_dim] -> h [batch_size, emb_dim]
+        h_p = global_mean_pool(prot.x, prot.batch)
+        h_l = global_mean_pool(lig.x, lig.batch)
 
         return self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
     

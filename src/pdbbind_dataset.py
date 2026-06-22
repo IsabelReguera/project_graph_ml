@@ -63,9 +63,9 @@ class PDBbindDataset(Dataset):
                     else:
                         obj = Ligand.from_smile(smile)
                         
-                elif self.mode == 'protein':
+                elif self.mode == 'protein': #TODO fix pocket
                     if self.from_local_files:
-                        pocket_path = os.path.join(self.raw_dir, 'P-L', year, pdb_code, f'{pdb_code}_pocket.pdb')
+                        pocket_path = os.path.join(self.raw_dir, 'P-L', year, pdb_code, f'{pdb_code}_protein.pdb')
                         try:
                             obj = Protein.from_pdb_path(pocket_path)
                         except Exception:
