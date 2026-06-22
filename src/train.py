@@ -2,6 +2,7 @@ import yaml
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
+import torch
 
 from complex_dataset import ComplexDataset, complex_collate_fn, build_complex_dataset
 from baseline import BaselineGNN
@@ -53,6 +54,8 @@ class ComplexDataModule(pl.LightningDataModule):
             persistent_workers=True
         )
 
+#per migliorare le prestazioni su GPU 
+torch.set_float32_matmul_precision('medium')
 
 def main(config_path='config.yaml'):
 
@@ -93,7 +96,7 @@ def main(config_path='config.yaml'):
     
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
-        precision='16-mixed',
+        precision='bf16-mixed',
         log_every_n_steps=10,
     )
 
