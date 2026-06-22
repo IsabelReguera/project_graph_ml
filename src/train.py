@@ -1,18 +1,25 @@
+import os
 import yaml
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
+import pandas as pd
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar
 import torch
 
 from complex_dataset import ComplexDataset, complex_collate_fn, build_complex_dataset
 from baseline import BaselineGNN
 from graphmatchingnetwork import GraphMatchingNetwork
 
+#per migliorare le prestazioni su GPU 
+torch.set_float32_matmul_precision('medium')
+
 
 class ComplexDataModule(pl.LightningDataModule):
     """LightningDataModule for ComplexDataset, it manages train/val split and DataLoader."""
     
-    def __init__(self, processed_dir, csv_path, batch_size=16, limit=None, train_val_split=0.2,seed=47):
+    def __init__(self, processed_dir, csv_path, batch_size=16, limit=None, train_val_split=0.2, seed=47):
         super().__init__()
         self.processed_dir = processed_dir
         self.csv_path = csv_path
@@ -54,17 +61,43 @@ class ComplexDataModule(pl.LightningDataModule):
             persistent_workers=True
         )
 
-#per migliorare le prestazioni su GPU 
-torch.set_float32_matmul_precision('medium')
 
 def main(config_path='config.yaml'):
 
+    # --- Load configuration from YAML file --------
     with open(config_path) as f:
         config = yaml.safe_load(f)
-        
-    processed_dir = config['data']['processed_dir']
-    csv_path      = config['data']['csv_path']
-    batch_size    = config['training']['batch_size']
+
+    processed_dir   = config['data']['processed_dir']
+    log_dir        = config['data']['log_dir']
+    csv_path        = config['data']['csv_path']
+    batch_size      = config['training']['batch_size']
+    model_type      = config['model'].get('model_type', 'baseline')  # Default to 'baseline' if not specified
+    experiment_name = config['model']['experiment_name']
+    
+    token_dim = config['model']['token_dim']
+    node_embedding_dims = config['model']['node_embedding_dims']
+    edge_embedding_dims = config['model']['edge_embedding_dims']
+    num_layers = config['model']['num_layers']
+    lr = config['model']['lr']
+    dropout_p = config['model']['dropout_p']
+    normalization = config['model']['normalization']
+
+
+    # --- Setup training environment --------
+    
+    logger = CSVLogger(save_dir=log_dir, name=experiment_name)
+    
+    callbacks = [
+        ModelCheckpoint(
+            dirpath=logger.log_dir,
+            filename='best',
+            monitor='val_loss',
+            mode='min',
+            save_top_k=1,
+        ),
+        EarlyStopping(monitor='val_loss', patience=config['training']['patience'], mode='min'),
+    ]
 
     data_module = ComplexDataModule(
         processed_dir=processed_dir,
@@ -72,38 +105,79 @@ def main(config_path='config.yaml'):
         batch_size=batch_size,
         limit=config['data'].get('limit', None),
         train_val_split=0.2,
-        seed=config['data'].get('seed', 47),
+        seed=config['data']['seed'],
     )
 
-    model = BaselineGNN(
-        token_dim=config['model']['token_dim'],
-        node_embedding_dims=[config['model']['node_embedding_dim']],
-        edge_embedding_dims=[config['model']['edge_embedding_dim']],
-        dropout_p=0.0, # Per la baseline, niente dropout
-        normalization=False, # LayerNorm prima di ReLU
-        lr=config['model']['lr'],
-    )
-    
-    """model = GraphMatchingNetwork(
-        token_dim=config['model']['token_dim'],
-        node_embedding_dim=[config['model']['node_embedding_dim']],
-        edge_embedding_dim=[config['model']['edge_embedding_dim']],
-        num_layers=2,
-        lr=config['model']['lr'],
-        dropout_p=config['model']['dropout_p'],
-        normalization=config['model']['normalization'],
-    )"""
-    
+    if model_type == 'baseline':
+        model = BaselineGNN(
+            token_dim=token_dim,
+            node_embedding_dims=node_embedding_dims,
+            edge_embedding_dims=edge_embedding_dims,
+            dropout_p=0.0,
+            normalization=False,
+            lr=lr,
+        )
+    else:
+        model = GraphMatchingNetwork(
+            token_dim=token_dim,
+            node_embedding_dims=node_embedding_dims,
+            edge_embedding_dims=edge_embedding_dims,
+            num_layers=num_layers,
+            lr=lr,
+            dropout_p=dropout_p,
+            normalization=normalization,
+        )
+
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
         precision='bf16-mixed',
-        log_every_n_steps=10,
+        log_every_n_steps=batch_size,
+        logger=logger,
+        callbacks=callbacks,
     )
 
-    trainer.fit(
-        model, 
-        datamodule=data_module
-    )
+    trainer.fit(model, datamodule=data_module)
+    
+    
+    
+    # --- LOGGING METRICS ------
+    metrics = pd.read_csv(os.path.join(logger.log_dir, 'metrics.csv'))
+    best_idx = metrics['val_loss'].idxmin()
+    best_row = metrics.loc[best_idx]
+    best_val = best_row['val_loss']
+    best_epoch = best_row['epoch']
+    best_val_mae = best_row['val_mae']
+    best_val_pearson = best_row['val_pearson_r']
+    print(f"[{experiment_name}]  best val_loss = {best_val:.4f} | R = {best_val_pearson:.4f} | epoch = {best_epoch} ")
+    
+    summary=[]
+    summary.append({
+        'name':                 experiment_name+f"_{trainer.logger.version}",
+        'model':                model_type,
+        'best_val_loss':        best_val,
+        'best_val_mae':         best_val_mae,
+        'pearson_r':            best_val_pearson,
+        'stopped_epoch':        best_epoch,
+        'node_embedding_dims':  node_embedding_dims[-1],
+        'edge_embedding_dims':  edge_embedding_dims[-1],
+        'num_layers':           num_layers,
+        'normalization':        normalization,
+        'dropout_p':            dropout_p,
+        'lr':                   lr,
+        'batch_size':           batch_size,
+    })
+    
+    # Save summary to CSV 
+    summary_path = os.path.join(log_dir, 'summary.csv')
+    if os.path.exists(summary_path):
+        existing_summary = pd.read_csv(summary_path)
+        summary_df = pd.DataFrame(summary)
+        summary_df = pd.concat([existing_summary, summary_df], ignore_index=True)
+    else:
+        summary_df = pd.DataFrame(summary)
+    summary_df.to_csv(summary_path, index=False)
+
+
 
 
 if __name__ == '__main__':
