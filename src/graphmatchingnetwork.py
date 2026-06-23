@@ -20,7 +20,7 @@ class GraphMatchingNetwork(pl.LightningModule):
                  num_layers=2, lr=1e-3, dropout_p=0.1, normalization=True):
         super().__init__()
         self.save_hyperparameters()
-        object.__setattr__(self, 'val_pearson', PearsonCorrCoef())
+        self.val_pearson = PearsonCorrCoef()
 
         self.node_embedding_dim = node_embedding_dims[-1]
         self.edge_embedding_dim = edge_embedding_dims[-1]   

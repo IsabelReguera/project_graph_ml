@@ -16,7 +16,7 @@ class BaselineGNN(pl.LightningModule):
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64], num_layers=1, lr=1e-3, normalization=True, dropout_p=0.1):
         super().__init__()
         self.save_hyperparameters()
-        object.__setattr__(self, 'val_pearson', PearsonCorrCoef())
+        self.val_pearson = PearsonCorrCoef()
 
         self.node_embedding_dim = node_embedding_dims[-1]
         self.edge_embedding_dim = edge_embedding_dims[-1]
