@@ -16,7 +16,7 @@ class BaselineGNN(pl.LightningModule):
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64], num_layers=1, lr=1e-3, normalization=True, dropout_p=0.1):
         super().__init__()
         self.save_hyperparameters()
-        object.__setattr__(self, 'val_pearson', PearsonCorrCoef())
+        self.val_pearson = PearsonCorrCoef()
 
         self.node_embedding_dim = node_embedding_dims[-1]
         self.edge_embedding_dim = edge_embedding_dims[-1]
@@ -76,17 +76,24 @@ class BaselineGNN(pl.LightningModule):
         prot, lig = batch
         y = prot.y.squeeze(-1)
         y_hat = self(prot, lig)
-        loss = nn.functional.mse_loss(y_hat, y)
+        
+        mse = nn.functional.mse_loss(y_hat, y)
         mae  = nn.functional.l1_loss(y_hat, y)
-        self.log(f"{stage}_loss", loss, batch_size=y.size(0), prog_bar=True)
+        
+        self.log(f"{stage}_loss", mse, batch_size=y.size(0), prog_bar=True)
         self.log(f"{stage}_mae",  mae,  batch_size=y.size(0), prog_bar=False)
         if stage == "val":
             self.val_pearson.update(y_hat.detach(), y.detach())
-        return loss
+        return mse
 
     def on_validation_epoch_end(self):
-        self.log("val_pearson_r", self.val_pearson.compute(), prog_bar=True)
+        #combined loss = mse + λ * (1 - pearson_r) - for optuna
+        r=self.val_pearson.compute()
+        combined_loss = self.trainer.callback_metrics["val_loss"]  + 0.2 * (1 - r)
+        self.log("val_pearson_r", r, prog_bar=True)
+        self.log("val_loss_combined", combined_loss, prog_bar=False)
         self.val_pearson.reset()
+        
 
     def training_step(self, batch, _):
         return self._step(batch, "train")

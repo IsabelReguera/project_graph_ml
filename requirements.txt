@@ -15,3 +15,4 @@ rdkit
 scikit-learn
 pyyaml
 plotly
+optuna-integration
