@@ -67,8 +67,9 @@ def main(config_path='config.yaml'):
             token_dim=token_dim,
             node_embedding_dims=node_embedding_dims,
             edge_embedding_dims=edge_embedding_dims,
-            dropout_p=0.0,
-            normalization=False,
+            dropout_p=dropout_p,
+            normalization=normalization,
+            num_layers=num_layers,
             lr=lr,
         )
     else:

@@ -4,24 +4,26 @@ data:
   csv_path: "data/raw/PL_cleaned_index.csv"
   processed_dir: "data/processed"
   log_dir: "lightning_logs"
-  limit: 1000
+  limit: 5000
   seed: 47
 
 model:
-  experiment_name: "gmn_model"
-  model_type: "gmn"  # Options: "baseline", "gmn"
-  token_dim: 16
+  experiment_name: "baseline_model"
+  model_type: "baseline"  # Options: "baseline", "gmn"
+  token_dim: 64
   node_embedding_dims: 
-  - 48
-  edge_embedding_dims: 
   - 32
-  lr: 0.00001
-  dropout_p: 0.0
+  - 16
+  edge_embedding_dims: 
+  - 32 
+  - 16
+  lr: 0.0006
+  dropout_p: 0.12
   normalization: True
   num_layers: 1
 
 training:
-  batch_size: 16
+  batch_size: 32
   epochs: 700
-  patience: 20
+  patience: 30
   use_amp: true
