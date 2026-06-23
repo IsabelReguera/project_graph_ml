@@ -15,13 +15,13 @@ model:
   - 48
   edge_embedding_dims: 
   - 32
-  lr: 0.003
-  dropout_p: 0.1
+  lr: 0.00001
+  dropout_p: 0.0
   normalization: True
   num_layers: 1
 
 training:
   batch_size: 16
-  epochs: 100
+  epochs: 700
   patience: 20
   use_amp: true

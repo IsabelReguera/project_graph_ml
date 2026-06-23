@@ -131,7 +131,7 @@ def main(config_path='config.yaml'):
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
         precision='bf16-mixed',
-        log_every_n_steps=batch_size,
+        log_every_n_steps=15,
         logger=logger,
         callbacks=callbacks,
     )
