@@ -50,24 +50,34 @@ class GraphMatchingNetwork(pl.LightningModule):
         ]
         self.mlp = nn.Sequential(*mlp_layers)
         
-    def forward(self, prot_batch, lig_batch):
+    def forward(self, prot_batch, lig_batch, return_attention=False):
         #Proiezione nello spazio comune
         prot, lig = self.tokenizer(prot_batch, lig_batch)
 
-        #Propagazione GMN (Loop sui layer)
-        # Ad ogni passo, proteina e ligando si parlano e si aggiornano
+        # Propagazione GMN (Loop sui layer)
+        # Se return_attention=True, teniamo le matrici dell'ultimo layer
+        attention_maps = None
         for layer in self.gmn_layers:
-            prot.x, lig.x = layer(
+            layer_out = layer(
                 prot.x, prot.edge_index, prot.edge_attr, prot.batch,
-                lig.x, lig.edge_index, lig.edge_attr, lig.batch
+                lig.x, lig.edge_index, lig.edge_attr, lig.batch,
+                return_attention=return_attention,
             )
-        
+            if return_attention:
+                prot.x, lig.x, attn_p_to_l, attn_l_to_p = layer_out
+                attention_maps = (attn_p_to_l, attn_l_to_p)
+            else:
+                prot.x, lig.x = layer_out
+
         #Readout (Media finale)
         h_p = global_mean_pool(prot.x, prot.batch)
         h_l = global_mean_pool(lig.x, lig.batch)
 
         #Predizione
-        return self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
+        out = self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
+        if return_attention:
+            return out, attention_maps
+        return out
     
     
     def _step(self, batch, stage):

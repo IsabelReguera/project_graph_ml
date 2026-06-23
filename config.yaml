@@ -4,7 +4,7 @@ data:
   csv_path: "data/raw/PL_cleaned_index.csv"
   processed_dir: "data/processed"
   log_dir: "lightning_logs"
-  limit: 5000
+  limit: 2000
   seed: 47
 
 model:
