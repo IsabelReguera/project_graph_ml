@@ -1,32 +1,52 @@
 import optuna
-from optuna.integration import PyTorchLightningPruningCallback
+from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
 # Importa i tuoi moduli
-from src.complex_dataset import ComplexDataModule
-from src.graphmatchingnetwork import GraphMatchingNetwork
+from utils import ComplexDataModule
+from graphmatchingnetwork import GraphMatchingNetwork
 
 LOSS='val_loss_combined'
-data_module = ComplexDataModule(
-    processed_dir="data/processed",
-    csv_path="data/raw/PL_cleaned_index.csv",
-    batch_size=16,
-    limit=1000,
-    seed=47,
-)
-data_module.setup()
 
 def objective(trial):
     
     lr = trial.suggest_float('lr', 1e-5, 1e-2, log=True)
     token_dim = trial.suggest_categorical('token_dim', [8, 16, 32, 64])
-    node_embedding_dims = trial.suggest_categorical('node_embedding_dims', [(32, 16), (64, 32), (128, 64), (32,), (48,), (64,)])
-    edge_embedding_dims = trial.suggest_categorical('edge_embedding_dims', [(32, 16), (64, 32), (128, 64), (32,), (48,), (64,)])
+    node_dim_str = trial.suggest_categorical(
+        'node_embedding_dims', 
+        ["32,16", "64,32", "128,64", "32", "48", "64"]
+    )
+    edge_dim_str = trial.suggest_categorical(
+        'edge_embedding_dims', 
+        ["32,16", "64,32", "128,64", "32", "48", "64"]
+    )
     num_layers = trial.suggest_int('num_layers', 1, 3)
     dropout_p      = trial.suggest_float("dropout_p", 0.0, 0.4)
     normalization  = trial.suggest_categorical("normalization", [True])
+    batch_size = trial.suggest_categorical("batch", [16,32])
     
+    node_embedding_dims = [int(x) for x in node_dim_str.split(",")]
+    edge_embedding_dims = [int(x) for x in edge_dim_str.split(",")]
+    
+    # ==========================================
+    # 🔥 IL BLOCCO DI STAMPA 
+    # ==========================================
+    print(f"\n" + "="*50)
+    print(f"🚀 INIZIO TRIAL NUMERO: {trial.number}")
+    print(f"⚙️  Configurazione testata:")
+    for key, value in trial.params.items():
+        print(f"    ▶ {key}: {value}")
+    print("="*50 + "\n")
+    # ==========================================
+    
+    data_module = ComplexDataModule(
+        processed_dir="data/processed",
+        csv_path="data/raw/PL_cleaned_index.csv",
+        batch_size=batch_size,
+        limit=1000,
+        seed=47,
+    )
     
     model = GraphMatchingNetwork(
         token_dim=token_dim,
@@ -39,10 +59,10 @@ def objective(trial):
     )
     
     trainer = pl.Trainer(
-        max_epochs=200,
+        max_epochs=150,
         precision="bf16-mixed",
-        enable_progress_bar=False,
-        enable_model_summary=False,
+        enable_progress_bar=True,
+        enable_model_summary=True,
         logger=False,
         callbacks=[
             EarlyStopping(monitor=LOSS, patience=15, mode='min'),
