@@ -23,9 +23,8 @@ class BaselineGNN(pl.LightningModule):
 
         self.tokenizer = DualGraphTokenizer(
             token_dim, 
-            node_ligand_hidden_sizes=node_embedding_dims, 
+            node_hidden_sizes=node_embedding_dims, 
             edge_ligand_hidden_sizes=edge_embedding_dims,
-            node_protein_hidden_sizes=node_embedding_dims,
             edge_protein_hidden_sizes=edge_embedding_dims
         )
         self.prot_gnn_layers = nn.ModuleList([
