@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import pandas as pd
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import CSVLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 import torch
 
 from baseline import BaselineGNN
@@ -33,9 +33,14 @@ def main(config_path='config.yaml'):
     node_embedding_dims = config['model']['node_embedding_dims']
     edge_embedding_dims = config['model']['edge_embedding_dims']
     num_layers = config['model']['num_layers']
-    lr = config['model']['lr']
+    lr=config['model']['lr']
+    max_lr = config['model']['max_lr']
+    min_lr = config['model']['min_lr']
+    warmup_percentage=  config['model']['warmup_percentage']
+    l2_norm = config['model']['l2_norm']
     dropout_p = config['model']['dropout_p']
     normalization = config['model']['normalization']
+    use_dynamic_schedule = config['model']['use_dynamic_schedule']
 
 
     # --- Setup training environment --------
@@ -51,6 +56,7 @@ def main(config_path='config.yaml'):
             save_top_k=1,
         ),
         EarlyStopping(monitor='val_loss', patience=config['training']['patience'], mode='min'),
+        LearningRateMonitor(logging_interval='step')
     ]
 
     data_module = ComplexDataModule(
@@ -64,13 +70,18 @@ def main(config_path='config.yaml'):
 
     if model_type == 'baseline':
         model = BaselineGNN(
-            token_dim=token_dim,
+           token_dim=token_dim,
             node_embedding_dims=node_embedding_dims,
             edge_embedding_dims=edge_embedding_dims,
-            dropout_p=dropout_p,
-            normalization=normalization,
             num_layers=num_layers,
             lr=lr,
+            max_lr=max_lr,
+            min_lr=min_lr,
+            warmup_step_percentage=warmup_percentage,
+            l2_norm=l2_norm,
+            dropout_p=dropout_p,
+            normalization=normalization,
+            use_dynamic_schedule=use_dynamic_schedule,
         )
     else:
         model = GraphMatchingNetwork(
@@ -79,14 +90,19 @@ def main(config_path='config.yaml'):
             edge_embedding_dims=edge_embedding_dims,
             num_layers=num_layers,
             lr=lr,
+            max_lr=max_lr,
+            min_lr=min_lr,
+            warmup_step_percentage=warmup_percentage,
+            l2_norm=l2_norm,
             dropout_p=dropout_p,
             normalization=normalization,
+            use_dynamic_schedule=use_dynamic_schedule,
         )
 
     trainer = pl.Trainer(
         max_epochs=config['training']['epochs'],
         precision='bf16-mixed',
-        log_every_n_steps=15,
+        log_every_n_steps=10,
         logger=logger,
         callbacks=callbacks,
     )
@@ -112,13 +128,14 @@ def main(config_path='config.yaml'):
         'best_val_loss':        best_val,
         'best_val_mae':         best_val_mae,
         'pearson_r':            best_val_pearson,
-        'stopped_epoch':        best_epoch,
         'node_embedding_dims':  node_embedding_dims[-1],
         'edge_embedding_dims':  edge_embedding_dims[-1],
         'num_layers':           num_layers,
         'normalization':        normalization,
         'dropout_p':            dropout_p,
+        'l2_norm':              l2_norm,
         'lr':                   lr,
+        'dynamic_schedule':     use_dynamic_schedule,
         'batch_size':           batch_size,
     })
     

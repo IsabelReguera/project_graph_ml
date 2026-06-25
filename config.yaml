@@ -8,8 +8,8 @@ data:
   seed: 47
 
 model:
-  experiment_name: "baseline_model"
-  model_type: "baseline"  # Options: "baseline", "gmn"
+  experiment_name: "gmn_emb_norm_dyn"
+  model_type: "gmn"  # Options: "baseline", "gmn"
   token_dim: 64
   node_embedding_dims: 
   - 32
@@ -18,9 +18,14 @@ model:
   - 32 
   - 16
   lr: 0.0006
+  l2_norm: 0.0
   dropout_p: 0.12
   normalization: True
   num_layers: 1
+  use_dynamic_schedule: True
+  max_lr: 1.0e-3
+  min_lr: 1.0e-6
+  warmup_percentage: 0.1
 
 training:
   batch_size: 32

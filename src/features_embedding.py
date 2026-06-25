@@ -93,7 +93,8 @@ class DualGraphTokenizer(nn.Module):
         """
         super().__init__()
         
-        self.norm_nodes      = nn.LayerNorm(node_hidden_sizes[-1])  # condivisa, normalizziamo con lo stesso layer per affinità attention !!!!
+        self.norm_prot_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
+        self.norm_lig_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
         self.norm_prot_edges = nn.LayerNorm(edge_protein_hidden_sizes[-1])
         self.norm_lig_edges  = nn.LayerNorm(edge_ligand_hidden_sizes[-1])
 
@@ -112,9 +113,9 @@ class DualGraphTokenizer(nn.Module):
         prot_batch = prot_batch_in.clone()
         lig_batch  = lig_batch_in.clone()
 
-        prot_batch.x         = self.norm_nodes(self.protein_node_enc(prot_batch.x))
+        prot_batch.x         = self.norm_prot_nodes(self.protein_node_enc(prot_batch.x))
         prot_batch.edge_attr = self.norm_prot_edges(self.protein_edge_enc(prot_batch.edge_attr))
-        lig_batch.x          = self.norm_nodes(self.ligand_node_enc(lig_batch.x))
+        lig_batch.x          = self.norm_lig_nodes(self.ligand_node_enc(lig_batch.x))
         lig_batch.edge_attr  = self.norm_lig_edges(self.ligand_edge_enc(lig_batch.edge_attr))
 
         return prot_batch, lig_batch

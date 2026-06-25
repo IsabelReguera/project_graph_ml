@@ -133,3 +133,9 @@ L'alternativa "aggiornamento degli archi" prevederebbe un MLP separato che, a og
 # esempio concettuale
 new_edge_attr = f(x[src], x[dst], old_edge_attr)
 Questo è ciò che fa ad esempio MPNN (Gilmer et al. 2017), ma per il tuo task è probabilmente superfluo.
+
+
+# ATTENTION COLLASSA -come fixarre
+- normalizzare embedding -> fatto -> X cambia poco nulla (anzi peggiora)
+- normalizzare attention -> da provare
+- inserire LR dinamico con warmup -> da provare
