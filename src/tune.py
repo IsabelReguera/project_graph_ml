@@ -24,7 +24,7 @@ def objective(trial):
     normalization = trial.suggest_categorical("normalization", [True,False])
     batch_size = trial.suggest_categorical("batch_size", [16, 32])
     l2_norm = trial.suggest_float('l2_norm', 0.0, 1e-3)
-    max_lr = trial.suggest_float('max_lr', 1e-4, 1e-3, log=True)
+    max_lr = trial.suggest_float('max_lr', 1e-4, 5e-3, log=True)
     min_lr = trial.suggest_float('min_lr', 1e-7, 1e-5, log=True)
     warmup_step_percentage = trial.suggest_float('warmup_percentage', 0.05, 0.2)
 
