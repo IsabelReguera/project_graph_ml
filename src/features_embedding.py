@@ -47,11 +47,11 @@ class FeatureTokenizer(nn.Module):
             mlp_input_dim = n * token_dim
             n_layers = len(mlp_hidden_layers)
             layers = [nn.Linear(mlp_input_dim, mlp_hidden_layers[0])]
-            layers.append(nn.ReLU())
             for i in range(1, n_layers):
-                layers.append(nn.Linear(mlp_hidden_layers[i - 1], mlp_hidden_layers[i]))
                 layers.append(nn.ReLU())
+                layers.append(nn.Linear(mlp_hidden_layers[i - 1], mlp_hidden_layers[i]))
             self.mlp = nn.Sequential(*layers)
+            
         else:
             self.mlp = None
     
@@ -82,22 +82,25 @@ class DualGraphTokenizer(nn.Module):
     """
 
     def __init__(self, token_dim,
-                 node_protein_hidden_sizes, edge_protein_hidden_sizes,
-                 node_ligand_hidden_sizes, edge_ligand_hidden_sizes):
+                 node_hidden_sizes, edge_protein_hidden_sizes, edge_ligand_hidden_sizes):
         """
         Args:
           token_dim: individual projection dimension for each feature.
-           The last element is the final protein node embedding dimension.
-          node_protein_hidden_sizes: list of ints for the protein node MLP.
+            The last element is the final protein node embedding dimension.
+          node_hidden_sizes: list of ints for the single node MLP.
           edge_protein_hidden_sizes: list of ints for the protein edge MLP.
-          node_ligand_hidden_sizes: list of ints for the ligand node MLP.
           edge_ligand_hidden_sizes: list of ints for the ligand edge MLP.
         """
         super().__init__()
+        
+        self.norm_prot_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
+        self.norm_lig_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
+        self.norm_prot_edges = nn.LayerNorm(edge_protein_hidden_sizes[-1])
+        self.norm_lig_edges  = nn.LayerNorm(edge_ligand_hidden_sizes[-1])
 
-        self.protein_node_enc = FeatureTokenizer(PROTEIN_NODE_SCHEMA, token_dim, node_protein_hidden_sizes)
+        self.protein_node_enc = FeatureTokenizer(PROTEIN_NODE_SCHEMA, token_dim, node_hidden_sizes)
         self.protein_edge_enc = FeatureTokenizer(PROTEIN_EDGE_SCHEMA, token_dim, edge_protein_hidden_sizes)
-        self.ligand_node_enc  = FeatureTokenizer(LIGAND_NODE_SCHEMA,  token_dim, node_ligand_hidden_sizes)
+        self.ligand_node_enc  = FeatureTokenizer(LIGAND_NODE_SCHEMA,  token_dim, node_hidden_sizes)
         self.ligand_edge_enc  = FeatureTokenizer(LIGAND_EDGE_SCHEMA,  token_dim, edge_ligand_hidden_sizes)
 
     def forward(self, prot_batch_in, lig_batch_in):
@@ -110,10 +113,10 @@ class DualGraphTokenizer(nn.Module):
         prot_batch = prot_batch_in.clone()
         lig_batch  = lig_batch_in.clone()
 
-        prot_batch.x         = self.protein_node_enc(prot_batch.x)
-        prot_batch.edge_attr = self.protein_edge_enc(prot_batch.edge_attr)
-        lig_batch.x          = self.ligand_node_enc(lig_batch.x)
-        lig_batch.edge_attr  = self.ligand_edge_enc(lig_batch.edge_attr)
+        prot_batch.x         = self.norm_prot_nodes(self.protein_node_enc(prot_batch.x))
+        prot_batch.edge_attr = self.norm_prot_edges(self.protein_edge_enc(prot_batch.edge_attr))
+        lig_batch.x          = self.norm_lig_nodes(self.ligand_node_enc(lig_batch.x))
+        lig_batch.edge_attr  = self.norm_lig_edges(self.ligand_edge_enc(lig_batch.edge_attr))
 
         return prot_batch, lig_batch
 

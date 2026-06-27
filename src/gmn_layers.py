@@ -16,16 +16,20 @@ class CrossGraphAttention(nn.Module):
         self.v_proj = nn.Linear(node_dim, node_dim)
         self.scale = node_dim ** -0.5 # Fattore di scaling per la softmax
 
-    def forward(self, x_prot, batch_prot, x_lig, batch_lig):
+    def forward(self, x_prot, batch_prot, x_lig, batch_lig, return_attention=False):
         """
         x_prot: [N_tot_prot, dim] - Nodi di tutte le proteine nel batch
         x_lig:  [N_tot_lig, dim]  - Nodi di tutti i ligandi nel batch
+        return_attention: se True restituisce anche le matrici di attenzione grezze
         Restituisce i vettori di attenzione da sottrarre: att_prot e att_lig
+        Se return_attention=True: (att_prot, att_lig, attn_p_to_l, attn_l_to_p)
+            attn_p_to_l: [B, N_prot, N_lig] - quanto ogni nodo proteina guarda ogni nodo ligando
+            attn_l_to_p: [B, N_lig, N_prot] - quanto ogni nodo ligando guarda ogni nodo proteina
         """
         # 1. 'Srotoliamo' i batch PyG in tensori densi [Batch, Max_Nodes, Dim]
         # mask ci dice quali nodi sono veri e quali sono padding (aggiunti per pareggiare le lunghezze)
-        p_dense, p_mask = to_dense_batch(x_prot, batch_prot) 
-        l_dense, l_mask = to_dense_batch(x_lig, batch_lig)   
+        p_dense, p_mask = to_dense_batch(x_prot, batch_prot)
+        l_dense, l_mask = to_dense_batch(x_lig, batch_lig)
 
         # 2. Proiezioni Q, K, V
         q_p = self.q_proj(p_dense) # Query Proteina
@@ -39,17 +43,17 @@ class CrossGraphAttention(nn.Module):
         # 3. Calcolo Punteggi di Affinità (Dot Product Similarity)
         # Proteina guarda Ligando (Equazione 10 del paper)
         # torch.bmm fa la moltiplicazione tra matrici tenendo conto della dimensione Batch
-        scores_p_to_l = torch.bmm(q_p, k_l.transpose(1, 2)) * self.scale 
-        
+        scores_p_to_l = torch.bmm(q_p, k_l.transpose(1, 2)) * self.scale
+
         # Gestione del padding: mettiamo a -infinito i punteggi verso nodi finti
         scores_p_to_l.masked_fill_(~l_mask.unsqueeze(1), float('-inf'))
-        
+
         # Softmax per avere le percentuali (pesi di attenzione)
-        attn_p_to_l = torch.softmax(scores_p_to_l, dim=-1) 
+        attn_p_to_l = torch.softmax(scores_p_to_l, dim=-1)
 
         # 4. Creazione dell'Identikit (Equazione 11 del paper)
         # La proteina "tira a sé" le features del ligando
-        message_from_l = torch.bmm(attn_p_to_l, v_l) 
+        message_from_l = torch.bmm(attn_p_to_l, v_l)
 
         # --- Facciamo la stessa cosa al contrario (Ligando guarda Proteina) ---
         scores_l_to_p = torch.bmm(q_l, k_p.transpose(1, 2)) * self.scale
@@ -62,6 +66,8 @@ class CrossGraphAttention(nn.Module):
         att_prot = message_from_l.view(-1, message_from_l.size(-1))[p_mask.view(-1)]
         att_lig = message_from_p.view(-1, message_from_p.size(-1))[l_mask.view(-1)]
 
+        if return_attention:
+            return att_prot, att_lig, attn_p_to_l, attn_l_to_p
         return att_prot, att_lig
 
 
@@ -107,14 +113,19 @@ class GMNLayer(nn.Module):
         self.update_lig  = _update_mlp()
 
     def forward(self, x_prot, edge_idx_prot, edge_attr_prot, batch_prot,
-                      x_lig, edge_idx_lig, edge_attr_lig, batch_lig):
-        
+                      x_lig, edge_idx_lig, edge_attr_lig, batch_lig, return_attention=False):
+
         # Step A: Parla coi vicini (Intra-graph)
         msg_prot = self.intra_prot(x_prot, edge_idx_prot, edge_attr_prot)
         msg_lig = self.intra_lig(x_lig, edge_idx_lig, edge_attr_lig)
 
         # Step B: Guarda l'altra molecola (Inter-graph)
-        att_prot, att_lig = self.cross_attention(x_prot, batch_prot, x_lig, batch_lig)
+        cross_out = self.cross_attention(x_prot, batch_prot, x_lig, batch_lig,
+                                         return_attention=return_attention)
+        if return_attention:
+            att_prot, att_lig, attn_p_to_l, attn_l_to_p = cross_out
+        else:
+            att_prot, att_lig = cross_out
 
         # Step C: Calcola la differenza (La genialata del paper: h_i - sum(a * h_j))
         diff_prot = x_prot - att_prot
@@ -125,4 +136,6 @@ class GMNLayer(nn.Module):
         new_x_prot = self.update_prot(torch.cat([x_prot, msg_prot, diff_prot], dim=-1))
         new_x_lig = self.update_lig(torch.cat([x_lig, msg_lig, diff_lig], dim=-1))
 
+        if return_attention:
+            return new_x_prot, new_x_lig, attn_p_to_l, attn_l_to_p
         return new_x_prot, new_x_lig

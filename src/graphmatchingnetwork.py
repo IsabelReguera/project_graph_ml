@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -16,7 +17,9 @@ class GraphMatchingNetwork(pl.LightningModule):
     
     """
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
-                 num_layers=2, lr=1e-3, dropout_p=0.1, normalization=True):
+                 num_layers=2,  dropout_p=0.1, normalization=True,
+                 lr=1e-3, max_lr=1e-3, min_lr=1e-6, l2_norm=0.0, warmup_step_percentage=0.1, use_dynamic_schedule=True
+                 ):
         super().__init__()
         self.save_hyperparameters()
         self.val_pearson = PearsonCorrCoef()
@@ -26,9 +29,8 @@ class GraphMatchingNetwork(pl.LightningModule):
 
         self.tokenizer = DualGraphTokenizer(
             token_dim=token_dim,
-            node_ligand_hidden_sizes=node_embedding_dims,
+            node_hidden_sizes=node_embedding_dims,
             edge_ligand_hidden_sizes=edge_embedding_dims,
-            node_protein_hidden_sizes=node_embedding_dims,
             edge_protein_hidden_sizes=edge_embedding_dims
         )
 
@@ -49,24 +51,34 @@ class GraphMatchingNetwork(pl.LightningModule):
         ]
         self.mlp = nn.Sequential(*mlp_layers)
         
-    def forward(self, prot_batch, lig_batch):
+    def forward(self, prot_batch, lig_batch, return_attention=False):
         #Proiezione nello spazio comune
         prot, lig = self.tokenizer(prot_batch, lig_batch)
 
-        #Propagazione GMN (Loop sui layer)
-        # Ad ogni passo, proteina e ligando si parlano e si aggiornano
+        # Propagazione GMN (Loop sui layer)
+        # Se return_attention=True, teniamo le matrici dell'ultimo layer
+        attention_maps = None
         for layer in self.gmn_layers:
-            prot.x, lig.x = layer(
+            layer_out = layer(
                 prot.x, prot.edge_index, prot.edge_attr, prot.batch,
-                lig.x, lig.edge_index, lig.edge_attr, lig.batch
+                lig.x, lig.edge_index, lig.edge_attr, lig.batch,
+                return_attention=return_attention,
             )
-        
+            if return_attention:
+                prot.x, lig.x, attn_p_to_l, attn_l_to_p = layer_out
+                attention_maps = (attn_p_to_l, attn_l_to_p)
+            else:
+                prot.x, lig.x = layer_out
+
         #Readout (Media finale)
         h_p = global_mean_pool(prot.x, prot.batch)
         h_l = global_mean_pool(lig.x, lig.batch)
 
         #Predizione
-        return self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
+        out = self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
+        if return_attention:
+            return out, attention_maps
+        return out
     
     
     def _step(self, batch, stage):
@@ -95,4 +107,49 @@ class GraphMatchingNetwork(pl.LightningModule):
         return self._step(batch, "val")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        # AdamW with linear warmup + cosine decay schedule.
+        # LR rises linearly for warmup_step_percentage of total steps, then decays
+        # smoothly via cosine annealing down to min_lr.
+        if self.hparams.use_dynamic_schedule:
+            max_lr = self.hparams.max_lr
+            min_lr = self.hparams.min_lr
+            warmup_percentage = self.hparams.warmup_step_percentage
+
+            # Optimizer starts at max_lr; the scheduler acts as a multiplier in [min_lr/max_lr, 1.0]
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=max_lr,
+                betas=(0.9, 0.999),
+                eps=1e-8,
+                weight_decay=self.hparams.l2_norm
+            )
+
+            total_steps = self.trainer.estimated_stepping_batches
+            warmup_steps = int(total_steps * warmup_percentage)
+            min_lr_ratio = min_lr / max_lr
+
+            def cosine_with_warmup_lambda(step):
+                step = max(1, step)
+
+                # Phase 1: linear warmup from ~0 to max_lr
+                if step <= warmup_steps:
+                    return step / warmup_steps
+
+                # Phase 2: cosine decay from max_lr down to min_lr
+                progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+                cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+                return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
+
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, cosine_with_warmup_lambda)
+
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "step",
+                    "frequency": 1,
+                }
+            }
+            
+        else: 
+            return torch.optim.Adam(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.l2_norm)
