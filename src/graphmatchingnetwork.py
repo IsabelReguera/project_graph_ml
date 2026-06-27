@@ -129,7 +129,8 @@ class GraphMatchingNetwork(pl.LightningModule):
             total_steps = self.trainer.estimated_stepping_batches
             warmup_steps = int(total_steps * warmup_percentage)
             min_lr_ratio = min_lr / max_lr
-
+            
+            decay_power = 2.0
             def cosine_with_warmup_lambda(step):
                 step = max(1, step)
 
@@ -139,8 +140,9 @@ class GraphMatchingNetwork(pl.LightningModule):
 
                 # Phase 2: cosine decay from max_lr down to min_lr
                 progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
-                cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
-                return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
+                base_cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+                steep_cosine = base_cosine ** decay_power
+                return min_lr_ratio + (1.0 - min_lr_ratio) * steep_cosine
 
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, cosine_with_warmup_lambda)
 
