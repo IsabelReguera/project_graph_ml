@@ -91,10 +91,12 @@ class BaselineGNN(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         #combined loss = mse + λ * (1 - pearson_r) - for optuna
-        r=self.val_pearson.compute()
-        combined_loss = self.trainer.callback_metrics["val_loss"]  + 0.2 * (1 - r)
-        self.log("val_pearson_r", r, prog_bar=True)
-        self.log("val_loss_combined", combined_loss, prog_bar=False)
+        r = self.val_pearson.compute()
+        if torch.isnan(r):
+            r = torch.tensor(0.0, device=self.device)
+        combined_loss = 0.8* self.trainer.callback_metrics["val_loss"] + 0.2 * (1 - r)
+        self.log("val_pearson_r",      r,              prog_bar=True)
+        self.log("val_loss_combined",  combined_loss,  prog_bar=False)
         self.val_pearson.reset()
         
 
