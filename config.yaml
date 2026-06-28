@@ -4,31 +4,33 @@ data:
   csv_path: "data/raw/PL_cleaned_index.csv"
   processed_dir: "data/processed"
   log_dir: "lightning_logs"
-  limit: 2000
+  limit: 3500
   seed: 47
 
 model:
-  experiment_name: "gmn_emb_norm_dyn"
+  experiment_name: "gmn_best"
   model_type: "gmn"  # Options: "baseline", "gmn"
   token_dim: 64
   node_embedding_dims: 
-  - 32
-  - 16
+  - 64
+  - 24
+  - 24
   edge_embedding_dims: 
-  - 32 
-  - 16
+  - 64 
+  - 24
+  - 24
   lr: 0.0006
-  l2_norm: 0.0
-  dropout_p: 0.12
+  l2_norm: 0.0004
+  dropout_p: 0.1  
   normalization: True
-  num_layers: 1
+  num_layers: 2
   use_dynamic_schedule: True
-  max_lr: 1.0e-3
-  min_lr: 1.0e-6
-  warmup_percentage: 0.75
+  max_lr: 0.0003
+  min_lr: 6.0e-6
+  warmup_percentage: 0.1
 
 training:
   batch_size: 32
-  epochs: 700
+  epochs: 500
   patience: 30
   use_amp: true

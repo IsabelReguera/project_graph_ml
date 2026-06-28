@@ -6,18 +6,25 @@ from pytorch_lightning.callbacks import EarlyStopping
 from utils import ComplexDataModule
 from graphmatchingnetwork import GraphMatchingNetwork
 
+import logging
+import warnings
+import os
+import torch
+
 LOSS = 'val_loss_combined'
+
+warnings.filterwarnings("ignore")
+torch.set_float32_matmul_precision('high') 
+
+# 2. Nascondi i log informativi del Trainer di PyTorch Lightning
+logging.getLogger("lightning.pytorch").setLevel(logging.WARNING)
 
 def objective(trial):
 
     token_dim = trial.suggest_categorical('token_dim', [16, 32, 64])
-    node_dim_str = trial.suggest_categorical(
-        'node_embedding_dims',
+    dim_str = trial.suggest_categorical(
+        'embedding_dims',
         ["32,16", "64,32", "32,32", "64,32,16","64,24,24", "32"]
-    )
-    edge_dim_str = trial.suggest_categorical(
-        'edge_embedding_dims',
-        ["32,16", "64,32", "32,32", "64,32,16", "64,24,24", "32"]
     )
     num_layers = trial.suggest_int('num_layers', 1, 3)
     dropout_p = trial.suggest_float("dropout_p", 0.0, 0.4)
@@ -28,8 +35,8 @@ def objective(trial):
     min_lr = trial.suggest_float('min_lr', 1e-7, 1e-5, log=True)
     warmup_step_percentage = trial.suggest_float('warmup_percentage', 0.05, 0.2)
 
-    node_embedding_dims = [int(x) for x in node_dim_str.split(",")]
-    edge_embedding_dims = [int(x) for x in edge_dim_str.split(",")]
+    node_embedding_dims = [int(x) for x in dim_str.split(",")]
+    edge_embedding_dims = [int(x) for x in dim_str.split(",")]
 
     print("\n" + "="*50)
     print(f"TRIAL {trial.number}")
@@ -90,7 +97,22 @@ if __name__ == "__main__":
         storage="sqlite:///optuna_study.db",
         load_if_exists=True,
     )
-    study.optimize(objective, n_trials=400, timeout=9000)
+   
+    from datetime import datetime, timedelta
+    # Calcola l'orario di fine stimato basandosi sul timeout di 10000 secondi
+    timeout_secondi = 20000
+    ora_attuale = datetime.now()
+    ora_fine_stimata = ora_attuale + timedelta(seconds=timeout_secondi)
+
+    # Formatta gli orari per una lettura più pulita (ore:minuti:secondi)
+    stringa_ora_attuale = ora_attuale.strftime("%H:%M:%S")
+    stringa_ora_fine = ora_fine_stimata.strftime("%H:%M:%S")
+
+    print(f"Avvio ricerca best HP alle ore: {stringa_ora_attuale}")
+    print(f"Orario stimato di fine (basato sul timeout): {stringa_ora_fine}")
+    
+    # Avvia l'ottimizzazione
+    study.optimize(objective, n_trials=400, timeout=timeout_secondi)
 
     print(f"{study.study_name} - Best HP found:")
     print(study.best_params)
