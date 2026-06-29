@@ -10,20 +10,20 @@ data:
 model:
   experiment_name: "gmn_emb_norm"
   model_type: "gmn"  # Options: "baseline", "gmn"
-  dropout_p: 0.12
+  dropout_p: 0.12 #alzare
   edge_embedding_dims:
   - 32
-  - 16
-  l2_norm: 0.01
+  - 16 #alzare
+  l2_norm: 0.01 #abbassare potenzialmente
   lr: 0.0006
-  max_lr: 0.001
+  max_lr: 0.001 #abbassare
   min_lr: 1.0e-06
   node_embedding_dims:
   - 32
-  - 16
+  - 16 #alzare
   normalization: true
   num_layers: 1
-  token_dim: 64
+  token_dim: 64 #alzare
   use_dynamic_schedule: true
   warmup_percentage: 0.075
 

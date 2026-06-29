@@ -137,5 +137,9 @@ Questo è ciò che fa ad esempio MPNN (Gilmer et al. 2017), ma per il tuo task �
 
 # ATTENTION COLLASSA -come fixarre
 - normalizzare embedding -> fatto -> X cambia poco nulla (anzi peggiora)
-- normalizzare attention -> da provare
-- inserire LR dinamico con warmup -> da provare
+- normalizzare attention -> da provare IMPORTANTE
+- inserire LR dinamico con warmup -> fatto
+
+
+# plot della distribuzione affinity
+- capire come settare treshold * (potenziale aggiunta paper)
