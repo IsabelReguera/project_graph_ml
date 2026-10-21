@@ -1,0 +1,19 @@
+# configs/data/index_v2020_generalset.yaml 
+
+index_file: data/raw/pdbbind_v2020/INDEX_general_PL.2020R1.lst
+structures_dir: data/raw/pdbbind_v2020/generalset
+output: data/index/index.csv
+
+filters:
+  max_resolution: 2.5
+  exclude_nmr: true
+  allowed_compare: ["="]
+  binding_types: ["Kd", "Ki"]      
+  exclude_comments:
+    - incomplete ligand
+    - covalent complex
+    - covalent bond
+    - isomer
+    - Different protein in assay
+    - Different ligand in assay
+    - Nonstandard assay

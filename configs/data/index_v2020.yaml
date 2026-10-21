@@ -1,1 +1,20 @@
-""parametri di filtraggio indice pdbind 2020""
+# configs/data/index_v2020.yaml 
+# version used for the training of the model for LIRE conference paper. It is a cleaned version of the original index file, with only Kd binding types and some comments excluded. The output file is v2020_kd_cleaned_index.csv.
+
+index_file: data/raw/pdbbind_v2020/INDEX_general_PL.2020R1.lst
+structures_dir: data/raw/pdbbind_v2020/generalset
+output: data/index/v2020_kd_cleaned_index.csv
+
+filters:
+  max_resolution: 2.5
+  exclude_nmr: true
+  allowed_compare: ["="]
+  binding_types: ["Kd"]         
+  exclude_comments:
+    - incomplete ligand
+    - covalent complex
+    - covalent bond
+    - isomer
+    - Different protein in assay
+    - Different ligand in assay
+    - Nonstandard assay

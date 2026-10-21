@@ -1,17 +1,41 @@
-cpdb-protein
-torch==2.11.0
-torch_geometric==2.7.0
-pytorch-lightning
-ipywidgets
-graphein==1.7.8
-networkx==3.6.1
-biopandas==0.5.1
-biopython==1.86
-py3Dmol==2.5.4
-pandas
-numpy
-matplotlib
+# Python 3.13
+#
+# Install (from repo root, venv active):
+#   pip install -r requirements.txt
+#   pip install -e .
+#
+# GPU: the default PyPI torch wheel on Windows is CPU-only. For CUDA, install
+# torch first from the PyTorch index, e.g.
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+# then run the commands above.
+
+# --- Deep learning ---
+torch
+torch_geometric
+pytorch-lightning>=2.5
+torchmetrics==1.9.0
+
+# --- Chemistry / structural biology ---
 rdkit
+graphein==1.7.8
+cpdb-protein
+biopandas
+biopython
+networkx
+
+# --- Scientific stack ---
+numpy
+pandas
+scipy
 scikit-learn
 pyyaml
+
+# --- Visualization / notebooks ---
+matplotlib
 plotly
+py3Dmol
+ipykernel
+ipywidgets
+
+# --- Dev tools ---
+nbstripout
