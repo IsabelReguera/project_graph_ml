@@ -47,7 +47,7 @@ DATASET_SCHEMAS = {
 # ---------------------------------------------------------------------------
 
 import pytorch_lightning as pl
-from complex_dataset import ComplexDataset, complex_collate_fn, build_complex_dataset
+from src.gmnbind.complex_dataset import ComplexDataset, complex_collate_fn, build_complex_dataset
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 

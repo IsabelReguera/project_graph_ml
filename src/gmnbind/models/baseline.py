@@ -1,22 +1,19 @@
-import math
 import torch
+import math
 import torch.nn as nn
 import pytorch_lightning as pl
-from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import GINEConv, global_mean_pool
 from torchmetrics import PearsonCorrCoef
+from gmnbind.models.tokenizer import DualGraphTokenizer
 
-from features_embedding import DualGraphTokenizer
-from utils import DATASET_SCHEMAS
-from gmn_layers import GMNLayer
 
-class GraphMatchingNetwork(pl.LightningModule):
+class BaselineGNN(pl.LightningModule):
     """
-    Modello GMN completo.
-    I grafi di proteina e ligando comunicano attivamente in ogni layer prima di essere compressi.
+    Baseline: due GNN indipendenti (proteina e ligando) senza comunicazione.
     Architettura:
-        DualFeatureTokenizer → [GMNLayer x num_layers] → mean pool → MLP → pAffinity
-    
+        DualGraphTokenizer → GINEConv -> mean pool -> MLP -> pAffinity
     """
+    
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
                  num_layers=2,  dropout_p=0.1, normalization=True,
                  lr=1e-3, max_lr=1e-3, min_lr=1e-6, l2_norm=0.0, warmup_step_percentage=0.1, use_dynamic_schedule=True
@@ -26,61 +23,57 @@ class GraphMatchingNetwork(pl.LightningModule):
         self.val_pearson = PearsonCorrCoef()
 
         self.node_embedding_dim = node_embedding_dims[-1]
-        self.edge_embedding_dim = edge_embedding_dims[-1]   
+        self.edge_embedding_dim = edge_embedding_dims[-1]
 
         self.tokenizer = DualGraphTokenizer(
-            token_dim=token_dim,
-            node_hidden_sizes=node_embedding_dims,
+            token_dim, 
+            node_hidden_sizes=node_embedding_dims, 
             edge_ligand_hidden_sizes=edge_embedding_dims,
             edge_protein_hidden_sizes=edge_embedding_dims
         )
-
-        self.gmn_layers = nn.ModuleList([
-            GMNLayer(self.node_embedding_dim, self.edge_embedding_dim,
-                     dropout_p=dropout_p, use_norm=normalization)
-            for _ in range(num_layers)
+        self.prot_gnn_layers = nn.ModuleList([
+            GINEConv(
+                nn.Sequential(
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                ), edge_dim=self.edge_embedding_dim
+            ) for _ in range(num_layers) 
         ])
-
-        # Identico al prediction MLP del Baseline per confronto equo
+        
+        self.lig_gnn_layers  = nn.ModuleList([
+            GINEConv(
+                nn.Sequential(
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.node_embedding_dim, self.node_embedding_dim),
+                ), edge_dim=self.edge_embedding_dim
+            ) for _ in range(num_layers)
+        ])
+        
         mlp_layers = [nn.Linear(2 * self.node_embedding_dim, self.node_embedding_dim)]
         if normalization:
             mlp_layers.append(nn.LayerNorm(self.node_embedding_dim))
         mlp_layers += [
             nn.ReLU(),
             nn.Dropout(dropout_p),
-            nn.Linear(self.node_embedding_dim, 1),
+            nn.Linear(self.node_embedding_dim, 1)
         ]
         self.mlp = nn.Sequential(*mlp_layers)
         
-    def forward(self, prot_batch, lig_batch, return_attention=False):
-        #Proiezione nello spazio comune
+    def forward(self, prot_batch, lig_batch):
         prot, lig = self.tokenizer(prot_batch, lig_batch)
 
-        # Propagazione GMN (Loop sui layer)
-        # Se return_attention=True, teniamo le matrici dell'ultimo layer
-        attention_maps = None
-        for layer in self.gmn_layers:
-            layer_out = layer(
-                prot.x, prot.edge_index, prot.edge_attr, prot.batch,
-                lig.x, lig.edge_index, lig.edge_attr, lig.batch,
-                return_attention=return_attention,
-            )
-            if return_attention:
-                prot.x, lig.x, attn_p_to_l, attn_l_to_p = layer_out
-                attention_maps = (attn_p_to_l, attn_l_to_p)
-            else:
-                prot.x, lig.x = layer_out
-
-        #Readout (Media finale)
+        for layer in self.prot_gnn_layers:
+            prot.x = layer(prot.x, prot.edge_index, prot.edge_attr)
+        for layer in self.lig_gnn_layers:
+            lig.x = layer(lig.x, lig.edge_index, lig.edge_attr)
+       
+        # pool) | h [N, emb_dim] -> h [batch_size, emb_dim]
         h_p = global_mean_pool(prot.x, prot.batch)
         h_l = global_mean_pool(lig.x, lig.batch)
 
-        #Predizione
-        out = self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
-        if return_attention:
-            return out, attention_maps
-        return out
-    
+        return self.mlp(torch.cat([h_p, h_l], dim=-1)).squeeze(-1)
     
     def _step(self, batch, stage):
         prot, lig = batch
