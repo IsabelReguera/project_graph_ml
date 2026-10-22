@@ -6,7 +6,6 @@ from torch_geometric.nn import global_mean_pool
 from torchmetrics import PearsonCorrCoef
 
 from gmnbind.models.tokenizer import DualGraphTokenizer
-from gmnbind.data.schemas import DATASET_SCHEMAS 
 from gmnbind.models.layers import GMNLayer
 
 class GraphMatchingNetwork(pl.LightningModule):

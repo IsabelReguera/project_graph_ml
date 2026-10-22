@@ -1,0 +1,51 @@
+{
+  "version": "v1",
+  "created": "2026-10-22T17:48:05",
+  "git_commit": "46bc823-dirty",
+  "config": {
+    "version": "v1",
+    "index": "data/index/index.csv",
+    "structures_dir": "data/raw/pdbbind_v2020/generalset",
+    "protein": {
+      "structure": "protein",
+      "granularity": "residue",
+      "edges": {
+        "peptide_bonds": true,
+        "distance_threshold": 8.0,
+        "long_interaction_threshold": 0
+      },
+      "node_features": [
+        "meiler",
+        "b_factor",
+        "residue_type"
+      ]
+    },
+    "ligand": {
+      "source": "sdf",
+      "fallback_to_smiles": true,
+      "add_hydrogens": false,
+      "distance_cutoff": 5.0,
+      "node_features": [
+        "atomic_number",
+        "degree",
+        "total_hs",
+        "formal_charge",
+        "aromatic",
+        "in_ring",
+        "hybridization"
+      ],
+      "edge_features": [
+        "bond_type",
+        "conjugated",
+        "distance"
+      ]
+    }
+  },
+  "finished": "2026-10-22T17:48:06",
+  "last_run_git_commit": "46bc823-dirty",
+  "last_run_limit": 20,
+  "n_complexes": 20,
+  "n_excluded": 0,
+  "n_smiles_fallback": 0,
+  "excluded": []
+}

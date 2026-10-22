@@ -2,9 +2,11 @@
 # Data
 # ============================================================
 # Raw PDBbind files and processed graphs are never versioned.
-# data/index/ (indices + splits) IS versioned.
+# data/index/ (indices + splits) and data/processed/*/meta.json ARE versioned.
 data/raw/
-data/processed/
+data/processed/**
+!data/processed/*/
+!data/processed/*/meta.json
 
 # Structure files anywhere in the repo
 *.pdb

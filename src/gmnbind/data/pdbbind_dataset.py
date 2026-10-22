@@ -3,85 +3,110 @@ import pandas as pd
 import torch
 from torch_geometric.data import Dataset, Data
 
-from ligand import Ligand
-from protein import Protein
+from gmnbind.data.protein import Protein
+from gmnbind.data.ligand import Ligand
+
 
 class PDBbindDataset(Dataset):
-    def __init__(self, root, csv_path, mode, from_local_files=False, limit=None, transform=None, pre_transform=None):
+    """
+    On-disk PyG dataset that builds protein OR ligand graphs (selected by `mode`)
+    for every complex in the index and saves them as {mode}_{pdb_code}.pt in `output_dir`.
+
+    Complexes whose .pt already exists are skipped, so an interrupted run can be resumed.
+    Failures are collected in `self.failures` (status "excluded"); ligands built from SMILES
+    because the SDF could not be read are recorded too (status "fallback").
+    """
+
+    def __init__(self, root, csv_path, mode, output_dir, structures_dir,
+                 from_local_files=True, fallback_to_smiles=True, limit=None,
+                 transform=None, pre_transform=None):
         if mode not in ['protein', 'ligand']:
-            raise ValueError("Il parametro 'mode' deve essere 'protein' o 'ligand'")
-            
+            raise ValueError("'mode' should be 'protein' or 'ligand'")
+
         self.mode = mode
         self.csv_path = csv_path
+        self._output_dir = output_dir
+        self.structures_dir = structures_dir
         self.from_local_files = from_local_files
+        self.fallback_to_smiles = fallback_to_smiles
 
+        self.failures = []
         self.df = pd.read_csv(csv_path)
         if limit is not None:
             self.df = self.df.iloc[:limit].reset_index(drop=True)
-            
+
         super().__init__(root, transform, pre_transform)
-        
-        # Filtro di validità post-processamento
+
+        # keep only the complexes whose .pt was generated successfully
         valid_indices = []
         for idx, row in self.df.iterrows():
             my_path = os.path.join(self.processed_dir, f'{self.mode}_{row["pdb_code"]}.pt')
             if os.path.exists(my_path):
                 valid_indices.append(idx)
-                
+
         self.df = self.df.loc[valid_indices].reset_index(drop=True)
 
     @property
+    def processed_dir(self):
+        return str(self._output_dir)
+
+    @property
     def raw_file_names(self):
-        return ['P-L', 'PL_cleaned_index.csv']
+        return ['pdbbind_v2020']
 
     @property
     def processed_file_names(self):
         return [f'{self.mode}_{code}.pt' for code in self.df['pdb_code']]
+
+    def _structure_path(self, pdb_code, suffix):
+        return os.path.join(self.structures_dir, pdb_code, f'{pdb_code}_{suffix}')
 
     def process(self):
         for i, row in self.df.iterrows():
             pdb_code   = row['pdb_code']
             smile      = row['SMILE']
             p_affinity = row['pAffinity']
-            year       = row['release_year']
-            
+
             save_path = os.path.join(self.processed_dir, f'{self.mode}_{pdb_code}.pt')
-            
+
             if os.path.exists(save_path):
                 continue
-                
+
             try:
-                # --- FASE 1: CREAZIONE OGGETTO (Ligand o Protein) ---
+                # --- STEP 1: build the Ligand / Protein object ---
                 if self.mode == 'ligand':
                     if self.from_local_files:
-                        ligand_path = os.path.join(self.raw_dir, 'P-L', year, pdb_code, f'{pdb_code}_ligand.sdf')
+                        ligand_path = self._structure_path(pdb_code, 'ligand.sdf')
                         try:
                             obj = Ligand.from_sdf(ligand_path)
-                        except Exception:
-                            print(f"{i:05d} - SDF non valido per {pdb_code}, fallback su SMILES...")
+                        except Exception as sdf_err:
+                            if not self.fallback_to_smiles:
+                                raise ValueError(f"SDF not parsable: {sdf_err}")
+                            print(f"{i:05d} - invalid SDF for {pdb_code}, falling back to SMILES...")
                             obj = Ligand.from_smile(smile)
+                            self.failures.append({"pdb_code": pdb_code, "mode": self.mode,
+                                                  "status": "fallback",
+                                                  "reason": f"SDF failed ({sdf_err}), used SMILES"})
                     else:
                         obj = Ligand.from_smile(smile)
-                        
-                elif self.mode == 'protein': #TODO fix pocket
+
+                elif self.mode == 'protein':  # TODO pocket
                     if self.from_local_files:
-                        pocket_path = os.path.join(self.raw_dir, 'P-L', year, pdb_code, f'{pdb_code}_protein.pdb')
+                        protein_path = self._structure_path(pdb_code, 'protein.pdb')
                         try:
-                            obj = Protein.from_pdb_path(pocket_path)
+                            obj = Protein.from_pdb_path(protein_path)
                         except Exception:
-                            print(f"{i:05d} - Proteina {pdb_code} non trovata localmente. Scaricamento dal web...")
+                            print(f"{i:05d} - protein {pdb_code} not found locally, downloading from RCSB...")
                             try:
                                 obj = Protein.from_pdb_code(pdb_code)
                             except Exception as web_err:
-                                raise ValueError(f"Fallito anche il download dal web: {web_err}")
+                                raise ValueError(f"Download from RCSB failed too: {web_err}")
                     else:
                         obj = Protein.from_pdb_code(pdb_code)
 
-                # --- FASE 2: ESTRAZIONE E SALVATAGGIO ---
-                # Se il codice arriva a questa riga, l'oggetto 'obj' è stato creato con successo
+                # --- STEP 2: extract graph tensors and save ---
                 x, edge_index, edge_attr, pos = obj.get_pyg_graph()
 
-                # Definiamo la variabile 'data' usando la classe Data di PyTorch Geometric
                 data = Data(
                     x=x,
                     edge_index=edge_index,
@@ -92,11 +117,12 @@ class PDBbindDataset(Dataset):
                 )
 
                 torch.save(data, save_path)
-                print(f"{i:05d} - {self.mode}_{pdb_code} salvato con successo!")
-                
+                print(f"{i:05d} - {self.mode}_{pdb_code} saved")
+
             except Exception as e:
-                # Qualsiasi errore (anche interno alla libreria RDKit o di rete) viene stampato qui
-                print(f"ERRORE CRITICO elaborando {self.mode} {pdb_code}: {e}")
+                print(f"ERROR processing {self.mode} {pdb_code}: {e}")
+                self.failures.append({"pdb_code": pdb_code, "mode": self.mode,
+                                      "status": "excluded", "reason": str(e)})
                 continue
 
     def len(self):
@@ -105,34 +131,3 @@ class PDBbindDataset(Dataset):
     def get(self, idx):
         pdb_code = self.df.iloc[idx]['pdb_code']
         return torch.load(os.path.join(self.processed_dir, f'{self.mode}_{pdb_code}.pt'), weights_only=False)
-
-
-# --- BLOCCO MAIN ---
-if __name__ == "__main__":
-    
-    print("--- INIZIO GENERAZIONE PROTEINE ---")
-    protein_dataset = PDBbindDataset(root='data', csv_path='data/raw/PL_cleaned_index.csv', mode='protein', limit=1000, from_local_files=True)
-    
-    print("\n--- INIZIO GENERAZIONE LIGANDI ---")
-    ligand_dataset = PDBbindDataset(root='data', csv_path='data/raw/PL_cleaned_index.csv', mode='ligand', limit=1000, from_local_files=True)
-    
-    # Allineamento dei dataset
-    valid_proteins = set(protein_dataset.df['pdb_code'])
-    valid_ligands = set(ligand_dataset.df['pdb_code'])
-    common_pdbs = list(valid_proteins.intersection(valid_ligands))
-    
-    protein_dataset.df = protein_dataset.df[protein_dataset.df['pdb_code'].isin(common_pdbs)].reset_index(drop=True)
-    ligand_dataset.df = ligand_dataset.df[ligand_dataset.df['pdb_code'].isin(common_pdbs)].reset_index(drop=True)
-
-    print(f"\nGenerazione completata! Complessi validi e allineati: {len(protein_dataset)}")
-    
-    # CONTROLLO DI SICUREZZA: Eseguiamo il test solo se almeno 1 complesso è sopravvissuto
-    if len(protein_dataset) > 0:
-        prot_sample = protein_dataset[0]
-        lig_sample = ligand_dataset[0]
-        
-        print("\n--- TEST MATCH ---")
-        print(f"Match PDB ID: {prot_sample.pdb_code} == {lig_sample.pdb_code}")
-        print(f"Match Score (Y): {prot_sample.y.item():.2f} == {lig_sample.y.item():.2f}")
-    else:
-        print("\nNessun complesso è sopravvissuto all'estrazione. Controllare i log di errore sopra.")

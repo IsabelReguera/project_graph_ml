@@ -38,9 +38,10 @@ def main():
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    processed_dir   = config['data']['processed_dir']
-    log_dir        = config['data']['log_dir']
-    csv_path        = config['data']['csv_path']
+    processed_dir   = REPO_ROOT/config['data']['processed_dir']
+    log_dir         = REPO_ROOT/config['data']['log_dir']
+    csv_path        = REPO_ROOT/config['data']['csv_path']
+    
     batch_size      = config['training']['batch_size']
     model_type      = config['model'].get('model_type', 'baseline')  # Default to 'baseline' if not specified
     experiment_name = config['model']['experiment_name']

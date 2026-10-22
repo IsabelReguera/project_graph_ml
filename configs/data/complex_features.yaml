@@ -1,0 +1,42 @@
+# configs/data/complex_features.yaml
+# CURRENT featurization config. The graphs are saved in data/processed/{version}/.
+#
+# If you change anything here OR in the featurization code
+# (protein.py, ligand.py, pdbbind_dataset.py), bump `version`.
+# The exact config used for each version is stored in data/processed/{version}/meta.json.
+#
+# v1: featurization used for the exam paper (original preprocessing).
+
+version: test
+index: data/index/index.csv
+structures_dir: data/raw/pdbbind_v2020/generalset
+
+protein:
+  structure: protein            # "protein" (_protein.pdb) | "pocket" (_pocket.pdb)
+  granularity: residue          # one node per residue (Cα)
+  edges:
+    peptide_bonds: true         # covalent backbone edges
+    distance_threshold: 8.0     # Å, Cα–Cα spatial contacts
+    long_interaction_threshold: 0
+  node_features:                # column order must match PROTEIN_NODE_SCHEMA
+    - meiler                    # 7 values
+    - b_factor
+    - residue_type              # 20 standard + 1 unknown
+
+ligand:
+  source: sdf                   # crystal pose from _ligand.sdf
+  fallback_to_smiles: true      # v1 behavior: if SDF fails, embed 3D from SMILES (ETKDGv3 + MMFF)
+  add_hydrogens: false          # heavy-atom graph
+  distance_cutoff: 5.0          # Å, virtual edges between non-bonded atoms
+  node_features:                # column order must match LIGAND_NODE_SCHEMA
+    - atomic_number
+    - degree
+    - total_hs
+    - formal_charge
+    - aromatic
+    - in_ring
+    - hybridization
+  edge_features:                # column order must match LIGAND_EDGE_SCHEMA
+    - bond_type                 # 0=virtual, 1=single, 2=double, 3=triple, 4=aromatic
+    - conjugated
+    - distance

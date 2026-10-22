@@ -2,7 +2,7 @@
 
 data:
   csv_path: "data/index/index.csv"
-  processed_dir: "data/processed"
+  processed_dir: "data/processed/v1"
   log_dir: "lightning_logs"
   limit: 3500
   seed: 47
