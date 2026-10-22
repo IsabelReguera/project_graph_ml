@@ -5,7 +5,7 @@ structures_dir: data/raw/pdbbind_v2020/generalset
 output: data/index/index.csv
 
 filters:
-  max_resolution: 2.5
+  max_resolution: 2.75
   exclude_nmr: true
   allowed_compare: ["="]
   binding_types: ["Kd", "Ki"]      

@@ -3,7 +3,7 @@
 
 index_file: data/raw/pdbbind_v2020/INDEX_general_PL.2020R1.lst
 structures_dir: data/raw/pdbbind_v2020/generalset
-output: data/index/v2020_kd_cleaned_index.csv
+output: data/index/index.csv
 
 filters:
   max_resolution: 2.5

@@ -1,22 +1,38 @@
+"""
+Train loop for GMN and Baseline models using PyTorch Lightning.
+This script reads configuration from a YAML file, sets up the data module, initializes the model,
+ and starts the training process.
+ 
+ Usage:
+    python scripts/train.py --config configs/gmn.yaml
+
+"""
+
+
+import argparse
 import os
 import yaml
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
 import pandas as pd
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 import torch
+from pathlib import Path
 
-from baseline import BaselineGNN
-from graphmatchingnetwork import GraphMatchingNetwork
-from utils import ComplexDataModule
+from gmnbind.models.baseline import BaselineGNN
+from gmnbind.models.gmn import GraphMatchingNetwork
+from gmnbind.data.datamodule import ComplexDataModule
 
-#per migliorare le prestazioni su GPU 
+#to improve performance on some GPUs
 torch.set_float32_matmul_precision('medium')
 
+REPO_ROOT = Path(__file__).resolve().parents[1]   
 
-def main(config_path='config.yaml'):
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", default="configs/gmn.yaml")
+    args = parser.parse_args()
+    config_path = REPO_ROOT/args.config
 
     # --- Load configuration from YAML file --------
     with open(config_path) as f:
@@ -153,5 +169,4 @@ def main(config_path='config.yaml'):
 
 
 if __name__ == '__main__':
-    #PER RUNNARE -> cartella repository in terminale, poi: python src/train.py
     main()

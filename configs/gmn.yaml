@@ -1,14 +1,14 @@
 # Configurazione per dataset, modello e training.
 
 data:
-  csv_path: "data/raw/PL_cleaned_index.csv"
+  csv_path: "data/index/index.csv"
   processed_dir: "data/processed"
   log_dir: "lightning_logs"
-  limit: 3500
+  limit: 200
   seed: 47
 
 model:
-  experiment_name: "gmn_emb_norm"
+  experiment_name: "gmn_test"
   model_type: "gmn"  # Options: "baseline", "gmn"
   dropout_p: 0.12 #alzare
   edge_embedding_dims:
@@ -29,6 +29,6 @@ model:
 
 training:
   batch_size: 32
-  epochs: 1000
+  epochs: 2
   patience: 30
   use_amp: true

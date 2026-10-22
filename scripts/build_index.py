@@ -16,10 +16,9 @@ import pandas as pd
 import yaml
 from rdkit import Chem, RDLogger
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 RDLogger.DisableLog("rdApp.*")
 
-REPO_ROOT = Path(__file__).resolve().parents[1]   # scripts/build_index.py → radice della repo
+REPO_ROOT = Path(__file__).resolve().parents[1]   # scripts/build_index.py → repository root
 DATA_DIR = REPO_ROOT / "data"
 
 #regex [PDB_code, resolution, release_year, binding_data[type,compare,unit], reference, ligand_name, comments]
@@ -41,7 +40,6 @@ UNIT_TO_MOLAR = {"mM": 1e-3, "uM": 1e-6, "nM": 1e-9, "pM": 1e-12, "fM": 1e-15}
 def parse_index(path: Path) -> pd.DataFrame:
     """Parse the PDBBind index file and return a DataFrame."""
     rows, skipped = [], 0
-    skipped = 0
     with open(path, encoding="utf-8") as f:
         lines = [
             ln.strip()

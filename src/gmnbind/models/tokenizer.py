@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
-from utils import DATASET_SCHEMAS
+
+from gmnbind.data.schemas import DATASET_SCHEMAS
 
 PROTEIN_NODE_SCHEMA = DATASET_SCHEMAS['protein_node']
 LIGAND_NODE_SCHEMA = DATASET_SCHEMAS['ligand_node']
