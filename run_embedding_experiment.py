@@ -17,8 +17,21 @@ import torch
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, Callback
 from pytorch_lightning.loggers import CSVLogger
+
+
+class EpochPrinter(Callback):
+    """Stampa una riga per epoca, al posto della progress bar."""
+    def on_validation_epoch_end(self, trainer, pl_module):
+        m = trainer.callback_metrics
+        epoch = trainer.current_epoch
+        tr = m.get("train_loss")
+        vl = m.get("val_loss")
+        va = m.get("val_mae")
+        vr = m.get("val_pearson_r")
+        def fmt(v): return f"{float(v):.4f}" if v is not None else "   -   "
+        print(f"  epoch {epoch:3d} | train_loss {fmt(tr)} | val_loss {fmt(vl)} | val_mae {fmt(va)} | val_r {fmt(vr)}", flush=True)
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
@@ -191,6 +204,7 @@ def run_single(model_type, embedding_type, seed, base_cfg):
     callbacks = [
         ckpt_cb,
         EarlyStopping(monitor="val_loss", patience=cfg["training"]["patience"], mode="min"),
+        EpochPrinter(),
     ]
 
     trainer = pl.Trainer(
@@ -199,6 +213,8 @@ def run_single(model_type, embedding_type, seed, base_cfg):
         log_every_n_steps=10,
         logger=logger,
         callbacks=callbacks,
+        enable_progress_bar=False,
+        enable_model_summary=False,
     )
     trainer.fit(model, datamodule=data_module)
 
