@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 from torch_geometric.nn import GINEConv, global_mean_pool
 from torchmetrics import PearsonCorrCoef
 from features_embedding import DualGraphTokenizer
-
+from features_embedding_dense import DenseFeatureEmbedding
 
 class BaselineGNN(pl.LightningModule):
     """
@@ -16,7 +16,8 @@ class BaselineGNN(pl.LightningModule):
     
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
                  num_layers=2,  dropout_p=0.1, normalization=True,
-                 lr=1e-3, max_lr=1e-3, min_lr=1e-6, l2_norm=0.0, warmup_step_percentage=0.1, use_dynamic_schedule=True
+                 lr=1e-3, max_lr=1e-3, min_lr=1e-6, l2_norm=0.0, warmup_step_percentage=0.1, use_dynamic_schedule=True,
+                 embedding_type="tokenizer", cat_emb_dim=8,
                  ):
         super().__init__()
         self.save_hyperparameters()
@@ -29,8 +30,11 @@ class BaselineGNN(pl.LightningModule):
             token_dim, 
             node_hidden_sizes=node_embedding_dims, 
             edge_ligand_hidden_sizes=edge_embedding_dims,
-            edge_protein_hidden_sizes=edge_embedding_dims
+            edge_protein_hidden_sizes=edge_embedding_dims,
+            embedding_type=embedding_type,    
+            cat_emb_dim=cat_emb_dim,
         )
+
         self.prot_gnn_layers = nn.ModuleList([
             GINEConv(
                 nn.Sequential(
