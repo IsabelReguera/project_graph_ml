@@ -120,7 +120,13 @@ def extract_last_node_embeddings(model, batch, model_type):
     run one forward on `batch`, return the post-GNN node embeddings along
     with edge_index and batch assignments for both protein and ligand.
     """
+    # Make sure model and batch live on the same device, otherwise forward
+    # breaks with 'Expected all tensors to be on the same device'.
+    device = next(model.parameters()).device
     prot_batch, lig_batch = batch
+    prot_batch = prot_batch.to(device)
+    lig_batch  = lig_batch.to(device)
+    batch = (prot_batch, lig_batch)
     captured = {}
 
     if model_type == "baseline":
@@ -290,17 +296,27 @@ def main():
     base_cfg["model"].setdefault("cat_emb_dim", 8)
     base_cfg["model"].setdefault("embedding_type", "tokenizer")
 
-    rows = []
+    # Resume support: load existing rows so we skip already-completed runs.
+    detail_path = os.path.join(OUT_DIR, "runs_detail.csv")
+    if os.path.exists(detail_path):
+        existing = pd.read_csv(detail_path)
+        done = {(r.model, r.embedding, int(r.seed)) for r in existing.itertuples()}
+        rows = existing.to_dict("records")
+        print(f"[resume] {len(done)} runs already in {detail_path}, skipping them")
+    else:
+        done = set()
+        rows = []
+
     for model_type in MODEL_TYPES:
         for embedding_type in EMBEDDING_TYPES:
             for seed in SEEDS:
+                if (model_type, embedding_type, seed) in done:
+                    print(f"[skip] {model_type}/{embedding_type}/seed{seed} already done")
+                    continue
                 try:
                     row = run_single(model_type, embedding_type, seed, base_cfg)
                     rows.append(row)
-                    # save progressively, so partial results survive a crash
-                    pd.DataFrame(rows).to_csv(
-                        os.path.join(OUT_DIR, "runs_detail.csv"), index=False
-                    )
+                    pd.DataFrame(rows).to_csv(detail_path, index=False)
                 except Exception as e:
                     print(f"[FAIL] {model_type}/{embedding_type}/seed{seed}: {e}")
 
