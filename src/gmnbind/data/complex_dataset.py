@@ -58,24 +58,3 @@ def build_complex_dataset(processed_dir, csv_path, limit=None):
     print(f"ComplexDataset[{len(valid_codes)}] built")
     return ComplexDataset(processed_dir, valid_codes)
 
-
-# --- SMOKE TEST ---
-if __name__ == '__main__':
-    from torch.utils.data import DataLoader
-
-    dataset = build_complex_dataset(
-        processed_dir='data/processed',
-        csv_path='data/raw/PL_cleaned_index.csv',
-        limit=10
-    )
-    print(f"Complessi validi: {len(dataset)}")
-
-    if len(dataset) == 0:
-        print("Nessun complesso trovato. Eseguire prima pdbbind_dataset.py per generare i .pt.")
-    else:
-        loader = DataLoader(dataset, batch_size=4, shuffle=False, collate_fn=complex_collate_fn)
-        prot_batch, lig_batch = next(iter(loader))
-        print(f"Protein batch — x: {prot_batch.x.shape}, edge_index: {prot_batch.edge_index.shape}, "
-              f"edge_attr: {prot_batch.edge_attr.shape}, y: {prot_batch.y.shape}")
-        print(f"Ligand  batch — x: {lig_batch.x.shape},  edge_index: {lig_batch.edge_index.shape}, "
-              f"edge_attr: {lig_batch.edge_attr.shape},  y: {lig_batch.y.shape}")
