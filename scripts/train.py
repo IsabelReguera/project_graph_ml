@@ -7,7 +7,8 @@ This script reads configuration from a YAML file, sets up the data module, initi
     python scripts/train.py --config configs/gmn.yaml
 
 """
-
+import warnings
+warnings.filterwarnings("ignore", message=".*torch.jit.script.*is deprecated.*", category=FutureWarning)
 
 import argparse
 import os
@@ -135,7 +136,7 @@ def main():
     best_val = best_row['val_loss']
     best_epoch = best_row['epoch']
     best_val_mae = best_row['val_mae']
-    best_val_pearson = best_row['val_pearson_r']
+    best_val_pearson = best_row['val_pearson']
     print(f"[{experiment_name}]  best val_loss = {best_val:.4f} | R = {best_val_pearson:.4f} | epoch = {best_epoch} ")
     
     summary=[]

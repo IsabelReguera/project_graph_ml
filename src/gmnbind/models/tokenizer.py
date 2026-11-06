@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-
 from gmnbind.data.schemas import DATASET_SCHEMAS
 
 PROTEIN_NODE_SCHEMA = DATASET_SCHEMAS['protein_node']

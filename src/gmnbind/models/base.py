@@ -1,5 +1,5 @@
 import pytorch_lightning as pl
-from torchmetrics import PearsonCorrCoef
+from gmnbind.metrics import all_metrics
 from gmnbind.models.tokenizer import DualGraphTokenizer
 import torch
 import torch.nn as nn
@@ -13,7 +13,10 @@ class BaseAffinityModel(pl.LightningModule):
         
         super().__init__()
         self.save_hyperparameters()
-        self.val_pearson = PearsonCorrCoef()
+        
+        # predictions/targets accumulated over an epoch, per stage
+        
+        self._epoch_outputs = {"val": [], "test": []}
 
         self.node_embedding_dim = node_embedding_dims[-1]
         self.edge_embedding_dim = edge_embedding_dims[-1]
@@ -24,8 +27,8 @@ class BaseAffinityModel(pl.LightningModule):
             edge_ligand_hidden_sizes=edge_embedding_dims,
             edge_protein_hidden_sizes=edge_embedding_dims,
         )
-        # the prediction head is built by the subclass with _build_head(),
-       
+        
+    # the prediction head MLP is built by the subclass with _build_head(), used in both models  
     def _build_head(self):
         d = self.node_embedding_dim
         layers = [nn.Linear(2 * d, d)]
@@ -42,26 +45,46 @@ class BaseAffinityModel(pl.LightningModule):
         raise NotImplementedError
     
     def _step(self, batch, stage):
-            prot, lig = batch
-            y = prot.y.squeeze(-1)
-            y_hat = self(prot, lig)
-            loss = nn.functional.mse_loss(y_hat, y)
-            mae  = nn.functional.l1_loss(y_hat, y)
-            self.log(f"{stage}_loss", loss, batch_size=y.size(0), prog_bar=True)
-            self.log(f"{stage}_mae",  mae,  batch_size=y.size(0), prog_bar=False)
-            if stage == "val":
-                self.val_pearson.update(y_hat.detach(), y.detach())
-            return loss
+        prot, lig = batch
+        y = prot.y.squeeze(-1)
+        y_hat = self(prot, lig)
+        loss = nn.functional.mse_loss(y_hat, y)
+        mae = nn.functional.l1_loss(y_hat, y)
+        self.log(f"{stage}_loss", loss, batch_size=y.size(0), prog_bar=True)
+        if stage == "train":
+            self.log("train_mae", mae, batch_size=y.size(0), prog_bar=False)
+        
+        if stage in self._epoch_outputs:
+            self._epoch_outputs[stage].append(
+                (y_hat.detach().float().cpu(), y.detach().float().cpu())
+            )
+        return loss
+                
+    def _log_epoch_metrics(self, stage):
+        outputs = self._epoch_outputs[stage]
+        if not outputs:
+            return
+        y_hat = torch.cat([o[0] for o in outputs])
+        y     = torch.cat([o[1] for o in outputs])
+        for name, value in all_metrics(y, y_hat).items():
+            self.log(f"{stage}_{name}", value, prog_bar=(name == "pearson"))
+        outputs.clear()
     
-    def on_validation_epoch_end(self):
-        self.log("val_pearson_r", self.val_pearson.compute(), prog_bar=True)
-        self.val_pearson.reset()
-
+        
     def training_step(self, batch, _):
         return self._step(batch, "train")
 
     def validation_step(self, batch, _):
         return self._step(batch, "val")
+
+    def test_step(self, batch, _):
+        return self._step(batch, "test")
+
+    def on_validation_epoch_end(self):
+        self._log_epoch_metrics("val")
+            
+    def on_test_epoch_end(self):
+        self._log_epoch_metrics("test")
 
     def configure_optimizers(self):
         # AdamW with linear warmup + cosine decay schedule.
