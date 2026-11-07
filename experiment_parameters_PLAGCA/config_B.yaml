@@ -1,0 +1,37 @@
+# Configuration B -- PLAGCA hyperparameters (dense encoder).
+# Reference: Shi et al., PLAGCA, J. Biomed. Inform. 165 (2025).
+# Uses the "paper" model variants with a parametric MLP head.
+
+data:
+  csv_path: "data/raw/PL_cleaned_index.csv"
+  processed_dir: "data/processed"
+  log_dir: "experiment_parameters_PLAGCA/runs"
+  limit: 3500
+  seed: 47
+
+model:
+  model_variant: "paper"            # uses baseline_paper.py / graphmatchingnetwork_paper.py
+  embedding_type: "dense"
+  cat_emb_dim: 8
+  token_dim: 64                     # unused when embedding_type == dense
+  node_embedding_dims: [128]        # paper: linear embedding dim = 128
+  edge_embedding_dims: [128]
+  num_layers: 3                     # paper: message-passing iterations T = 3
+  dropout_p: 0.5                    # paper: dropout in each MLP FC layer = 0.5
+  normalization: true
+  lr: 0.001                         # paper: learning rate = 0.001
+  max_lr: 0.001
+  min_lr: 0.001
+  l2_norm: 0.0                      # paper does not use weight decay
+  warmup_percentage: 0.0
+  use_dynamic_schedule: false       # paper: plain Adam, no scheduler
+  mlp_hidden_sizes: [512, 256, 128, 1]  # paper: FC MLP = 512, 256, 128, 1
+
+training:
+  batch_size: 512                   # paper: batch size = 512
+  epochs: 500                       # paper: epochs = 500
+  patience: 30
+
+graph_filters:
+  protein_max_distance: null
+  ligand_bonds_only: false

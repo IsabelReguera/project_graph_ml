@@ -1,0 +1,38 @@
+# Configuration C -- PLAGCA hyperparameters + sparse graphs.
+# Same as config_B plus on-the-fly edge filtering:
+#   - protein graph kept only within 4 A instead of 8 A
+#   - ligand graph kept only with real chemical bonds (no spatial 5 A edges)
+
+data:
+  csv_path: "data/raw/PL_cleaned_index.csv"
+  processed_dir: "data/processed"
+  log_dir: "experiment_parameters_PLAGCA/runs"
+  limit: 3500
+  seed: 47
+
+model:
+  model_variant: "paper"
+  embedding_type: "dense"
+  cat_emb_dim: 8
+  token_dim: 64
+  node_embedding_dims: [128]
+  edge_embedding_dims: [128]
+  num_layers: 3
+  dropout_p: 0.5
+  normalization: true
+  lr: 0.001
+  max_lr: 0.001
+  min_lr: 0.001
+  l2_norm: 0.0
+  warmup_percentage: 0.0
+  use_dynamic_schedule: false
+  mlp_hidden_sizes: [512, 256, 128, 1]
+
+training:
+  batch_size: 512
+  epochs: 500
+  patience: 30
+
+graph_filters:
+  protein_max_distance: 4.0         # keep only protein edges with distance <= 4 A
+  ligand_bonds_only: true           # drop spatial edges, keep only chemical bonds
