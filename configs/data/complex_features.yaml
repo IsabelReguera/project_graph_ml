@@ -7,7 +7,7 @@
 #
 # v1: featurization used for the exam paper (original preprocessing).
 
-version: test
+version: v2
 index: data/index/index.csv
 structures_dir: data/raw/pdbbind_v2020/generalset
 

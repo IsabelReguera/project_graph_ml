@@ -1,7 +1,7 @@
 # Configurazione per dataset, modello e training.
 
 data:
-  processed_dir: "data/processed/v1"
+  processed_dir: "data/processed/v2"
   split: "data/index/splits/v2020_casf"
   log_dir: "lightning_logs"
   seed: 47

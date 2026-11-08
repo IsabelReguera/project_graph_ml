@@ -9,6 +9,7 @@ or from the command line:
     python -m gmnbind.cross_validation configs/gmn.yaml [--cv-dir data/index/splits/v2020_casf_cv5]
 
 The model is selected by `model.model_type` in the config ("gmn" or "baseline").
+Each fold is trained with gmnbind.training.train (no checkpoint, no LR logging).
 For each fold a fresh model is trained with early stopping on val_loss. The fold's result is the row of
 metrics.csv with the lowest val_loss: all the metrics of a fold come from that same epoch.
 No checkpoint is saved.
@@ -23,110 +24,13 @@ warnings.filterwarnings("ignore", message=".*torch.jit.script.*is deprecated.*",
 
 import argparse
 import json
-from pathlib import Path
 
 import pandas as pd
-import pytorch_lightning as pl
-import torch
-import yaml
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from pytorch_lightning.loggers import CSVLogger
 
-from gmnbind.data.datamodule import ComplexDataModule
-from gmnbind.models.baseline import BaselineGNN
-from gmnbind.models.gmn import GraphMatchingNetwork
+# build_model / load_config are re-exported: notebooks import them from here
+from gmnbind.training import _resolve, build_model, load_config, train  # noqa: F401
 
-torch.set_float32_matmul_precision("medium")
-
-REPO_ROOT = Path(__file__).resolve().parents[2]      # src/gmnbind/cross_validation.py -> repo root
 DEFAULT_CV_DIR = "data/index/splits/v2020_casf_cv5"
-
-# model_type in the config -> model class
-MODELS = {"baseline": BaselineGNN, "gmn": GraphMatchingNetwork}
-
-
-# ---------------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------------
-
-def _resolve(path):
-    """Absolute paths as-is, relative ones from the repo root."""
-    path = Path(path)
-    return path if path.is_absolute() else REPO_ROOT / path
-
-
-def load_config(config):
-    """Accept a path to a YAML file or an already loaded dict."""
-    if isinstance(config, dict):
-        return config
-    return yaml.safe_load(_resolve(config).read_text())
-
-
-def model_kwargs(model_cfg):
-    """Model constructor arguments from the `model` block of an experiment config."""
-    return dict(
-        token_dim=model_cfg["token_dim"],
-        node_embedding_dims=model_cfg["node_embedding_dims"],
-        edge_embedding_dims=model_cfg["edge_embedding_dims"],
-        num_layers=model_cfg["num_layers"],
-        dropout_p=model_cfg["dropout_p"],
-        normalization=model_cfg["normalization"],
-        lr=model_cfg["lr"],
-        max_lr=model_cfg["max_lr"],
-        min_lr=model_cfg["min_lr"],
-        l2_norm=model_cfg["l2_norm"],
-        warmup_step_percentage=model_cfg["warmup_percentage"],
-        use_dynamic_schedule=model_cfg["use_dynamic_schedule"],
-    )
-
-
-def build_model(model_cfg):
-    """Fresh, untrained model; model_type selects the class."""
-    model_type = model_cfg["model_type"]
-    if model_type not in MODELS:
-        raise ValueError(f"Unknown model_type '{model_type}'. Available: {list(MODELS)}")
-    return MODELS[model_type](**model_kwargs(model_cfg))
-
-
-# ---------------------------------------------------------------------------------
-# One fold
-# ---------------------------------------------------------------------------------
-
-def _run_fold(config, fold_dir, out_dir):
-    """Train one fold and return the validation metrics of the epoch with the lowest val_loss."""
-    pl.seed_everything(config["data"]["seed"])          # same init in every fold: only the data change
-
-    data_module = ComplexDataModule(
-        processed_dir=_resolve(config["data"]["processed_dir"]),
-        split_dir=fold_dir,
-        batch_size=config["training"]["batch_size"],
-    )
-    model = build_model(config["model"])                # fresh model for every fold
-
-    logger = CSVLogger(save_dir=out_dir.parent, name=out_dir.name, version=fold_dir.name)
-    trainer = pl.Trainer(
-        max_epochs=config["training"]["epochs"],
-        precision="bf16-mixed",
-        log_every_n_steps=10,
-        logger=logger,
-        callbacks=[
-            # save_top_k=0: no model saved (metrics are read from metrics.csv);
-            # it also prevents Lightning from adding its default checkpoint callback
-            ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=0),
-            EarlyStopping(monitor="val_loss", patience=config["training"]["patience"], mode="min"),
-        ],
-    )
-    trainer.fit(model, datamodule=data_module)
-
-    # all the val metrics of the epoch with the lowest val_loss (same row of metrics.csv)
-    metrics = pd.read_csv(Path(logger.log_dir) / "metrics.csv")
-    val_rows = metrics.dropna(subset=["val_loss"])
-    best = val_rows.loc[val_rows["val_loss"].idxmin()]
-    val_cols = [c for c in val_rows.columns if c.startswith("val_")]
-    return {"fold": fold_dir.name,
-            "best_epoch": int(best["epoch"]),
-            "n_epochs": int(val_rows["epoch"].max()) + 1,
-            **{c: float(best[c]) for c in val_cols}}
 
 
 # ---------------------------------------------------------------------------------
@@ -160,7 +64,11 @@ def cross_validate(config, cv_dir=DEFAULT_CV_DIR, out_dir=None):
     rows = []
     for fold_dir in fold_dirs:
         print(f"\n===== {fold_dir.name} =====")
-        rows.append(_run_fold(config, fold_dir, out_dir))
+        # one training per fold: no checkpoint, no LR logging; the fold result is read from metrics.csv
+        result = train(config, split_dir=fold_dir, log_dir=out_dir.parent, name=out_dir.name,
+                       version=fold_dir.name, save_checkpoint=False, lr_monitor=True)
+        rows.append({"fold": fold_dir.name, "best_epoch": result["best_epoch"], "n_epochs": result["n_epochs"],
+                     **{k: v for k, v in result.items() if k.startswith("val_")}})
         pd.DataFrame(rows).to_csv(out_dir / "cv_folds.csv", index=False)   # saved after every fold
 
     folds = pd.DataFrame(rows)

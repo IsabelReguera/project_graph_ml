@@ -1,9 +1,9 @@
 {
-  "version": "test",
+  "version": "v2",
   "created": "2026-10-22T17:51:15",
   "git_commit": "46bc823-dirty",
   "config": {
-    "version": "test",
+    "version": "v2",
     "index": "data/index/index.csv",
     "structures_dir": "data/raw/pdbbind_v2020/generalset",
     "protein": {
