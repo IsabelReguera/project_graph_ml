@@ -1,23 +1,23 @@
-# Python 3.13
+# Python 3.12
 #
 # Install (from repo root, venv active):
 #   pip install -r requirements.txt
 #   pip install -e .
 #
 # GPU: the default PyPI torch wheel on Windows is CPU-only. For CUDA, install
-# torch first from the PyTorch index, e.g.
-#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+# torch first from the PyTorch index (pick the CUDA version you have), e.g.
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
 # then run the commands above.
 
 # --- Deep learning ---
 torch
 torch_geometric
-pytorch-lightning>=2.5
-torchmetrics==1.9.0
+pytorch-lightning
+torchmetrics
 
 # --- Chemistry / structural biology ---
 rdkit
-graphein==1.7.8
+graphein
 cpdb-protein
 biopandas
 biopython
