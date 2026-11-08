@@ -4,7 +4,17 @@ import matplotlib.pyplot as plt
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdchem
 import torch
+import yaml
+from pathlib import Path
 
+# default featurization config (used when no cfg is passed, e.g. in the notebooks)
+FEATURES_CONFIG = Path(__file__).resolve().parents[3] / "configs" / "data" / "complex_features.yaml"
+
+
+def load_ligand_config(path=FEATURES_CONFIG):
+    """`ligand` block of the featurization config."""
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)["ligand"]
 
 
 # Silence RDKit logs (errors, warnings, info)
@@ -33,28 +43,37 @@ HYBRIDIZATION = {
 }
 
 class Ligand:
-    """Atom-level ligand graph built with RDKit, from SDF (crystal pose) or SMILES (3D conformer generated)."""
-    def __init__(self, mol, is_3d):
+    """
+    Atom-level ligand graph built with RDKit, from SDF (crystal pose) or SMILES (3D conformer generated).
+
+    cfg: `ligand` block of the featurization config. If None, read from configs/data/complex_features.yaml.
+    """
+    def __init__(self, mol, is_3d, cfg=None):
         self.mol = mol
         self._computed_3d = is_3d
+        self.cfg = cfg if cfg is not None else load_ligand_config()
         
     @classmethod
-    def from_smile(cls, smiles):
+    def from_smile(cls, smiles, cfg=None):
         """Create a Ligand from a SMILES string (3D coordinates generated lazily)."""
         mol = Chem.MolFromSmiles(smiles)
         if not mol: raise ValueError("Invalid SMILES")
-        #mol = Chem.AddHs(mol)
-        return cls(mol, is_3d=False)
+        cfg = cfg if cfg is not None else load_ligand_config()
+        if cfg["add_hydrogens"]:
+            mol = Chem.AddHs(mol)
+        return cls(mol, is_3d=False, cfg=cfg)
 
     @classmethod
-    def from_sdf(cls, path):
+    def from_sdf(cls, path, cfg=None):
         """Create a Ligand from an SDF file (uses the 3D coordinates in the file)."""
         supplier = Chem.SDMolSupplier(path)
         if not supplier: raise ValueError("SDF not found")
         mol = supplier[0]
         if mol is None: raise ValueError(f"Molecule not parsable: {path}")
-        #mol = Chem.AddHs(mol, addCoords=True)
-        return cls(mol, is_3d=True)
+        cfg = cfg if cfg is not None else load_ligand_config()
+        if cfg["add_hydrogens"]:
+            mol = Chem.AddHs(mol, addCoords=True)
+        return cls(mol, is_3d=True, cfg=cfg)
 
 
     def _ensure_3d_coordinates(self):
@@ -160,8 +179,11 @@ class Ligand:
             pos.append([p.x, p.y, p.z])
         return torch.tensor(pos, dtype=torch.float32)
 
-    def get_pyg_graph(self, distance_cutoff=5.0):
-        """Return (x, edge_index, edge_attr, pos) ready for PyTorch Geometric."""
+    def get_pyg_graph(self, distance_cutoff=None):
+        """Return (x, edge_index, edge_attr, pos) ready for PyTorch Geometric.
+        distance_cutoff: Å for the virtual edges; if None, taken from the config."""
+        if distance_cutoff is None:
+            distance_cutoff = self.cfg["distance_cutoff"]
         x   = self._get_node_features()
         pos = self._get_3d_coordinates()  
         # edge indices and features computed together

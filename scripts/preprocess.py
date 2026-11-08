@@ -129,7 +129,7 @@ def main():
         output_dir=output_dir,
         structures_dir=structures_dir,
         from_local_files=True,
-        fallback_to_smiles=feat_cfg["ligand"]["fallback_to_smiles"],
+        features_cfg=feat_cfg,             # same config as in meta.json, passed to Protein / Ligand
         limit=args.limit,
     )
 

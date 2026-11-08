@@ -1,6 +1,9 @@
 import os
 import networkx as nx
 from functools import partial
+from pathlib import Path
+
+import yaml
 
 import torch
 import cpdb
@@ -12,23 +15,32 @@ from graphein.protein.features.nodes.amino_acid import meiler_embedding
 from graphein.protein.visualisation import plotly_protein_structure_graph
 import py3Dmol
 
-# node annotation functions
-node_funcs = [
-    meiler_embedding,      # Meiler embedding: 7 physico-chemical properties per amino acid
-]
+# default featurization config (used when no cfg is passed, e.g. in the notebooks)
+FEATURES_CONFIG = Path(__file__).resolve().parents[3] / "configs" / "data" / "complex_features.yaml"
 
-# edge construction functions
-edge_funcs = [
-    add_peptide_bonds,    # covalent backbone edges
-    partial(add_distance_threshold,  long_interaction_threshold=0, threshold=8.0)  # spatial edges (Cα–Cα within 8 Å)
-]
 
-# graph configuration with the functions above
-GRAPH_CONFIG = ProteinGraphConfig(
-    node_metadata_functions=node_funcs,
-    edge_construction_functions=edge_funcs,
-    verbose=False
-)
+def load_protein_config(path=FEATURES_CONFIG):
+    """`protein` block of the featurization config."""
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)["protein"]
+
+
+def make_graph_config(cfg):
+    """Graphein config from the `protein` block of the featurization config."""
+    edges = cfg["edges"]
+    edge_funcs = []
+    if edges["peptide_bonds"]:
+        edge_funcs.append(add_peptide_bonds)                      # covalent backbone edges
+    edge_funcs.append(partial(add_distance_threshold,              # spatial edges (Cα–Cα within the threshold)
+                              long_interaction_threshold=edges["long_interaction_threshold"],
+                              threshold=edges["distance_threshold"]))
+    return ProteinGraphConfig(
+        node_metadata_functions=[meiler_embedding],                # 7 physico-chemical properties per residue
+        edge_construction_functions=edge_funcs,
+        verbose=False,
+    )
+
+
 AMMINO_ACIDS_DICT = {
     'ALA': 0, 'ARG': 1, 'ASN': 2, 'ASP': 3, 'CYS': 4,
     'GLN': 5, 'GLU': 6, 'GLY': 7, 'HIS': 8, 'ILE': 9,
@@ -37,34 +49,40 @@ AMMINO_ACIDS_DICT = {
 }
 
 class Protein:
-    """Residue-level protein graph built with Graphein (one node per residue, Cα coordinates)."""
-    def __init__(self, pdb_code, pdb_path=None):
+    """
+    Residue-level protein graph built with Graphein (one node per residue, Cα coordinates).
+
+    cfg: `protein` block of the featurization config. If None, read from configs/data/complex_features.yaml.
+    """
+    def __init__(self, pdb_code, pdb_path=None, cfg=None):
         self.pdb_code = pdb_code
         self.pdb_path = pdb_path
+        self.cfg = cfg if cfg is not None else load_protein_config()
+        self._graph_config = make_graph_config(self.cfg)
         self._graph = None
 
     @classmethod
-    def from_pdb_path(cls, path):
+    def from_pdb_path(cls, path, cfg=None):
         """Create a Protein from a local PDB file."""
         if not os.path.exists(path):
             raise FileNotFoundError(f"File not found: {path}")
         else:
             pdb_code = os.path.basename(path).split('_')[0]  # PDB code from the file name
-        return cls(pdb_code=pdb_code, pdb_path=path)
+        return cls(pdb_code=pdb_code, pdb_path=path, cfg=cfg)
 
     @classmethod
-    def from_pdb_code(cls, pdb_code):
+    def from_pdb_code(cls, pdb_code, cfg=None):
         """Create a Protein that downloads the structure from RCSB."""
         if not pdb_code or len(pdb_code) != 4:
             raise ValueError(f"Invalid PDB code: {pdb_code}")
-        return cls(pdb_code=pdb_code)
+        return cls(pdb_code=pdb_code, cfg=cfg)
 
     def _ensure_graph(self):
         """Build the graph lazily, on first access."""
         if self._graph is not None:
             return
         
-        config = GRAPH_CONFIG
+        config = self._graph_config
 
         if self.pdb_path:
             # Workaround: construct_graph(config=config, path=self.pdb_path) crashes;
