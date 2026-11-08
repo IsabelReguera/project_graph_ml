@@ -1,0 +1,15 @@
+{
+  "created": "2026-11-07T21:39:40",
+  "index": "index.csv",
+  "core": "codes_core.txt",
+  "refined": "codes_refined.txt",
+  "val_fraction": 0.15,
+  "n_val": 1391,
+  "seed": 47,
+  "sizes": {
+    "train": 7885,
+    "val": 1391,
+    "test": 285
+  },
+  "core_missing_from_index": []
+}
