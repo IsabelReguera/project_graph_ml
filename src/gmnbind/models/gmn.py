@@ -1,3 +1,4 @@
+"""Graph Matching Network: protein and ligand graphs exchange information at every layer."""
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -7,11 +8,10 @@ from gmnbind.models.base import BaseAffinityModel
 
 class GraphMatchingNetwork(BaseAffinityModel):
     """
-    Modello GMN completo.
-    I grafi di proteina e ligando comunicano attivamente in ogni layer prima di essere compressi.
-    Architettura:
-        DualFeatureTokenizer → [GMNLayer x num_layers] → mean pool → MLP → pAffinity
-    
+    Full GMN model: protein and ligand graphs communicate through cross-graph attention
+    at every layer before being pooled.
+    Architecture:
+        DualGraphTokenizer -> [GMNLayer x num_layers] -> mean pool -> MLP head -> pAffinity
     """
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
                      num_layers=2, dropout_p=0.1, normalization=True,

@@ -1,10 +1,9 @@
 # Configurazione per dataset, modello e training.
 
 data:
-  csv_path: "data/index/index.csv"
   processed_dir: "data/processed/v1"
+  split: "data/index/splits/v2020_casf"
   log_dir: "lightning_logs"
-  limit: 3500
   seed: 47
 
 model:

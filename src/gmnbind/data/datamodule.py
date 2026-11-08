@@ -1,51 +1,65 @@
-"""DataModule for ComplexDataset, it manages train/val split and DataLoader."""
+"""DataModule for ComplexDataset: train/val/test split and DataLoaders."""
+
+from pathlib import Path
 
 import pytorch_lightning as pl
-from gmnbind.data.complex_dataset import ComplexDataset, complex_collate_fn, build_complex_dataset
-from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 
+from gmnbind.data.complex_dataset import ComplexDataset, complex_collate_fn
+from gmnbind.data.splits import load_split
+
 class ComplexDataModule(pl.LightningDataModule):
-    """LightningDataModule for ComplexDataset, it manages train/val split and DataLoader."""
+    """
+    Reads train/val/(test) PDB codes from split_dir (data/index/splits/...)
+    and loads the matching protein/ligand graphs from processed_dir.
+    """
     
-    def __init__(self, processed_dir, csv_path, batch_size=16, limit=None, train_val_split=0.2, seed=47):
+    def __init__(self, processed_dir, split_dir, batch_size=32, num_workers=4):
         super().__init__()
-        self.processed_dir = processed_dir
-        self.csv_path = csv_path
+        self.processed_dir = Path(processed_dir)
+        self.split_dir = Path(split_dir)
         self.batch_size = batch_size
-        self.limit = limit
-        self.train_val_split = train_val_split
-        self.seed = seed
+        self.num_workers = num_workers
+        self.train_ds = self.val_ds = self.test_ds = None
         
-    def setup(self, stage=None):
-        if stage == 'fit' or stage is None:
-            full_dataset = build_complex_dataset(self.processed_dir, self.csv_path, limit=self.limit)
-            all_codes = full_dataset.pdb_codes
-
-            # Split train/val with PDB code
-            train_codes, val_codes = train_test_split(all_codes, test_size=self.train_val_split, random_state=self.seed)
-
-            self.train_ds = ComplexDataset(self.processed_dir, train_codes)
-            self.val_ds = ComplexDataset(self.processed_dir, val_codes)
+    def _existing(self, codes, name):
+        """Keep only codes with both .pt files; warn about the missing ones."""
+        ok = [c for c in codes
+              if (self.processed_dir / f"protein_{c}.pt").exists()
+              and (self.processed_dir / f"ligand_{c}.pt").exists()]
+        if len(ok) < len(codes):
+            print(f"WARNING: {len(codes) - len(ok)}/{len(codes)} {name} complexes have no .pt and are skipped")
+        return ok
     
-            print(f"Train: {len(self.train_ds)} complexes | Val: {len(self.val_ds)} complexes")
+    def setup(self, stage=None):
+        if self.train_ds is not None:          # already set up (fit -> test)
+            return
         
-    def train_dataloader(self):
+        split = load_split(self.split_dir)
+        self.train_ds = ComplexDataset(self.processed_dir, self._existing(split["train"], "train"))
+        self.val_ds = ComplexDataset(self.processed_dir, self._existing(split["val"], "val"))
+        if "test" in split:
+            self.test_ds = ComplexDataset(self.processed_dir, self._existing(split["test"], "test"))
+        print(f"Split {self.split_dir.name}: train {len(self.train_ds)} | val {len(self.val_ds)} | "
+              f"test {len(self.test_ds) if self.test_ds else 0}")
+        
+    def _loader(self, ds, shuffle):
         return DataLoader(
-            self.train_ds, 
+            ds, 
             batch_size=self.batch_size, 
-            shuffle=True, 
-            collate_fn=complex_collate_fn, 
-            num_workers=4,
-            persistent_workers=False 
-        )
-
-    def val_dataloader(self):
-        return DataLoader(
-            self.val_ds, 
-            batch_size=self.batch_size, 
-            shuffle=False, 
-            collate_fn=complex_collate_fn, 
-            num_workers=4, 
+            shuffle=shuffle, 
+            collate_fn=complex_collate_fn,
+            num_workers=self.num_workers, 
             persistent_workers=False
         )
+        
+    def train_dataloader(self):
+        return self._loader(self.train_ds, shuffle=True)
+
+    def val_dataloader(self):
+        return self._loader(self.val_ds, shuffle=False)
+
+    def test_dataloader(self):
+        if self.test_ds is None:
+            raise RuntimeError(f"Split {self.split_dir.name} has no test set.")
+        return self._loader(self.test_ds, shuffle=False)

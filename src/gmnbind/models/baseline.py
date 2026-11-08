@@ -1,3 +1,4 @@
+"""Baseline: two independent GNNs (protein and ligand) with no communication between graphs."""
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -6,9 +7,10 @@ from gmnbind.models.base import BaseAffinityModel
 
 class BaselineGNN(BaseAffinityModel):
     """
-    Baseline: due GNN indipendenti (proteina e ligando) senza comunicazione.
-    Architettura:
-        DualGraphTokenizer → GINEConv -> mean pool -> MLP -> pAffinity
+    Baseline: two independent GNNs (protein and ligand), no communication between the graphs.
+    Same tokenizer, pooling and MLP head as the GMN: only the propagation differs.
+    Architecture:
+        DualGraphTokenizer -> [GINEConv x num_layers] (per graph) -> mean pool -> MLP head -> pAffinity
     """
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
                      num_layers=2, dropout_p=0.1, normalization=True,
@@ -52,7 +54,7 @@ class BaselineGNN(BaseAffinityModel):
         for layer in self.lig_gnn_layers:
             lig.x = layer(lig.x, lig.edge_index, lig.edge_attr)
        
-        # pool) | h [N, emb_dim] -> h [batch_size, emb_dim]
+        # mean pooling: [N_nodes, emb_dim] -> [batch_size, emb_dim]
         h_p = global_mean_pool(prot.x, prot.batch)
         h_l = global_mean_pool(lig.x, lig.batch)
 

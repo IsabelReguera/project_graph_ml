@@ -16,4 +16,4 @@ filters:
     - isomer
     - Different protein in assay
     - Different ligand in assay
-    - Nonstandard assay
+    #- Nonstandard assay

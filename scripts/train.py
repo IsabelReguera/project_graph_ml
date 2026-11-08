@@ -41,7 +41,6 @@ def main():
 
     processed_dir   = REPO_ROOT/config['data']['processed_dir']
     log_dir         = REPO_ROOT/config['data']['log_dir']
-    csv_path        = REPO_ROOT/config['data']['csv_path']
     
     batch_size      = config['training']['batch_size']
     model_type      = config['model'].get('model_type', 'baseline')  # Default to 'baseline' if not specified
@@ -60,6 +59,7 @@ def main():
     normalization = config['model']['normalization']
     use_dynamic_schedule = config['model']['use_dynamic_schedule']
 
+    pl.seed_everything(config['data']['seed'])  # for reproducibility
 
     # --- Setup training environment --------
     
@@ -79,11 +79,8 @@ def main():
 
     data_module = ComplexDataModule(
         processed_dir=processed_dir,
-        csv_path=csv_path,
+        split_dir=REPO_ROOT / config['data']['split'],
         batch_size=batch_size,
-        limit=config['data'].get('limit', None),
-        train_val_split=0.2,
-        seed=config['data']['seed'],
     )
 
     if model_type == 'baseline':
