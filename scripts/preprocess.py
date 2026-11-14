@@ -109,6 +109,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="configs/data/complex_features.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only the first N complexes of the index")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Parallel workers for download/featurization (default 1 = sequential). "
+                             "Higher values speed up RCSB downloads a lot; 8-16 is a good range.")
     args = parser.parse_args()
 
     feat_cfg = yaml.safe_load((REPO_ROOT / args.config).read_text())
@@ -131,6 +134,7 @@ def main():
         from_local_files=True,
         features_cfg=feat_cfg,             # same config as in meta.json, passed to Protein / Ligand
         limit=args.limit,
+        num_workers=args.workers,
     )
 
     print("--- PROTEIN GENERATION ---")

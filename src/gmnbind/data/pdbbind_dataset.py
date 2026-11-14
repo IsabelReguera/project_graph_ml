@@ -1,4 +1,7 @@
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 import torch
 from torch_geometric.data import Dataset, Data
@@ -25,7 +28,7 @@ class PDBbindDataset(Dataset):
 
     def __init__(self, root, csv_path, mode, output_dir, structures_dir,
                  features_cfg=None, from_local_files=True, limit=None,
-                 transform=None, pre_transform=None):
+                 num_workers=1, transform=None, pre_transform=None):
         if mode not in ['protein', 'ligand']:
             raise ValueError("'mode' should be 'protein' or 'ligand'")
 
@@ -39,7 +42,9 @@ class PDBbindDataset(Dataset):
         self.fallback_to_smiles = self.ligand_cfg["fallback_to_smiles"]
         self.protein_file = PROTEIN_FILES[self.protein_cfg["structure"]]
 
+        self.num_workers = max(1, int(num_workers))
         self.failures = []
+        self._failures_lock = threading.Lock()
         self.df = pd.read_csv(csv_path)
         if limit is not None:
             self.df = self.df.iloc[:limit].reset_index(drop=True)
@@ -70,69 +75,91 @@ class PDBbindDataset(Dataset):
     def _structure_path(self, pdb_code, suffix):
         return os.path.join(self.structures_dir, pdb_code, f'{pdb_code}_{suffix}')
 
-    def process(self):
-        for i, row in self.df.iterrows():
-            pdb_code   = row['pdb_code']
-            smile      = row['SMILE']
-            p_affinity = row['pAffinity']
+    def _record_failure(self, entry):
+        """Thread-safe append to self.failures."""
+        with self._failures_lock:
+            self.failures.append(entry)
 
-            save_path = os.path.join(self.processed_dir, f'{self.mode}_{pdb_code}.pt')
+    def _process_one(self, i, row):
+        """Build and save the graph for a single complex. Safe to call from a worker thread."""
+        pdb_code   = row['pdb_code']
+        smile      = row['SMILE']
+        p_affinity = row['pAffinity']
 
-            if os.path.exists(save_path):
-                continue
+        save_path = os.path.join(self.processed_dir, f'{self.mode}_{pdb_code}.pt')
 
-            try:
-                # --- STEP 1: build the Ligand / Protein object ---
-                if self.mode == 'ligand':
-                    if self.from_local_files:
-                        ligand_path = self._structure_path(pdb_code, 'ligand.sdf')
-                        try:
-                            obj = Ligand.from_sdf(ligand_path, cfg=self.ligand_cfg)
-                        except Exception as sdf_err:
-                            if not self.fallback_to_smiles:
-                                raise ValueError(f"SDF not parsable: {sdf_err}")
-                            print(f"{i:05d} - invalid SDF for {pdb_code}, falling back to SMILES...")
-                            obj = Ligand.from_smile(smile, cfg=self.ligand_cfg)
-                            self.failures.append({"pdb_code": pdb_code, "mode": self.mode,
-                                                  "status": "fallback",
-                                                  "reason": f"SDF failed ({sdf_err}), used SMILES"})
-                    else:
+        if os.path.exists(save_path):
+            return
+
+        try:
+            # --- STEP 1: build the Ligand / Protein object ---
+            if self.mode == 'ligand':
+                if self.from_local_files:
+                    ligand_path = self._structure_path(pdb_code, 'ligand.sdf')
+                    try:
+                        obj = Ligand.from_sdf(ligand_path, cfg=self.ligand_cfg)
+                    except Exception as sdf_err:
+                        if not self.fallback_to_smiles:
+                            raise ValueError(f"SDF not parsable: {sdf_err}")
+                        print(f"{i:05d} - invalid SDF for {pdb_code}, falling back to SMILES...")
                         obj = Ligand.from_smile(smile, cfg=self.ligand_cfg)
+                        self._record_failure({"pdb_code": pdb_code, "mode": self.mode,
+                                              "status": "fallback",
+                                              "reason": f"SDF failed ({sdf_err}), used SMILES"})
+                else:
+                    obj = Ligand.from_smile(smile, cfg=self.ligand_cfg)
 
-                elif self.mode == 'protein':
-                    if self.from_local_files:
-                        protein_path = self._structure_path(pdb_code, self.protein_file)
+            elif self.mode == 'protein':
+                if self.from_local_files:
+                    protein_path = self._structure_path(pdb_code, self.protein_file)
+                    try:
+                        obj = Protein.from_pdb_path(protein_path, cfg=self.protein_cfg)
+                    except Exception:
+                        print(f"{i:05d} - protein {pdb_code} not found locally, downloading from RCSB...")
                         try:
-                            obj = Protein.from_pdb_path(protein_path, cfg=self.protein_cfg)
-                        except Exception:
-                            print(f"{i:05d} - protein {pdb_code} not found locally, downloading from RCSB...")
-                            try:
-                                obj = Protein.from_pdb_code(pdb_code, cfg=self.protein_cfg)
-                            except Exception as web_err:
-                                raise ValueError(f"Download from RCSB failed too: {web_err}")
-                    else:
-                        obj = Protein.from_pdb_code(pdb_code, cfg=self.protein_cfg)
+                            obj = Protein.from_pdb_code(pdb_code, cfg=self.protein_cfg)
+                        except Exception as web_err:
+                            raise ValueError(f"Download from RCSB failed too: {web_err}")
+                else:
+                    obj = Protein.from_pdb_code(pdb_code, cfg=self.protein_cfg)
 
-                # --- STEP 2: extract graph tensors and save ---
-                x, edge_index, edge_attr, pos = obj.get_pyg_graph()
+            # --- STEP 2: extract graph tensors and save ---
+            x, edge_index, edge_attr, pos = obj.get_pyg_graph()
 
-                data = Data(
-                    x=x,
-                    edge_index=edge_index,
-                    edge_attr=edge_attr,
-                    pos=pos,
-                    y=torch.tensor([p_affinity], dtype=torch.float),
-                    pdb_code=pdb_code
-                )
+            data = Data(
+                x=x,
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+                pos=pos,
+                y=torch.tensor([p_affinity], dtype=torch.float),
+                pdb_code=pdb_code
+            )
 
-                torch.save(data, save_path)
-                print(f"{i:05d} - {self.mode}_{pdb_code} saved")
+            torch.save(data, save_path)
+            print(f"{i:05d} - {self.mode}_{pdb_code} saved")
 
-            except Exception as e:
-                print(f"ERROR processing {self.mode} {pdb_code}: {e}")
-                self.failures.append({"pdb_code": pdb_code, "mode": self.mode,
-                                      "status": "excluded", "reason": str(e)})
-                continue
+        except Exception as e:
+            print(f"ERROR processing {self.mode} {pdb_code}: {e}")
+            self._record_failure({"pdb_code": pdb_code, "mode": self.mode,
+                                  "status": "excluded", "reason": str(e)})
+
+    def process(self):
+        rows = list(self.df.iterrows())
+
+        # Sequential path: unchanged behaviour (default).
+        if self.num_workers <= 1:
+            for i, row in rows:
+                self._process_one(i, row)
+            return
+
+        # Parallel path: download + featurization are I/O-bound (RCSB downloads),
+        # so threads give a large speedup. Per-complex errors are handled inside
+        # _process_one; .result() only re-raises truly unexpected ones.
+        print(f"Processing {len(rows)} {self.mode}s with {self.num_workers} workers...")
+        with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            futures = [executor.submit(self._process_one, i, row) for i, row in rows]
+            for future in as_completed(futures):
+                future.result()
 
     def len(self):
         return len(self.df)
