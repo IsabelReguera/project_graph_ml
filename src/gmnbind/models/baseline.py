@@ -15,12 +15,14 @@ class BaselineGNN(BaseAffinityModel):
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
                      num_layers=2, dropout_p=0.1, normalization=True,
                      lr=1e-3, max_lr=1e-3, min_lr=1e-6, l2_norm=0.0,
-                     warmup_step_percentage=0.1, use_dynamic_schedule=False):
-        
+                     warmup_step_percentage=0.1, use_dynamic_schedule=False,
+                     embedding_type="tokenizer", cat_emb_dim=8):
+
         super().__init__(token_dim, node_embedding_dims, edge_embedding_dims,
                  num_layers, dropout_p, normalization,
                  lr, max_lr, min_lr, l2_norm,
-                 warmup_step_percentage, use_dynamic_schedule)
+                 warmup_step_percentage, use_dynamic_schedule,
+                 embedding_type, cat_emb_dim)
         
         #GNN layers for protein and ligand
         self.prot_gnn_layers = nn.ModuleList([

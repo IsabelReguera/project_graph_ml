@@ -9,6 +9,8 @@ data:
 model:
   experiment_name: "baseline_test"
   model_type: "baseline"
+  embedding_type: "tokenizer"  # Options: "tokenizer", "dense"
+  cat_emb_dim: 8  # categorical embedding size, used only when embedding_type: "dense"
   dropout_p: 0.12 #alzare
   edge_embedding_dims:
   - 32

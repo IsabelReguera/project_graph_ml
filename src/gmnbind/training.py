@@ -65,6 +65,8 @@ def model_kwargs(model_cfg):
         l2_norm=model_cfg["l2_norm"],
         warmup_step_percentage=model_cfg["warmup_percentage"],
         use_dynamic_schedule=model_cfg["use_dynamic_schedule"],
+        embedding_type=model_cfg.get("embedding_type", "tokenizer"),
+        cat_emb_dim=model_cfg.get("cat_emb_dim", 8),
     )
 
 

@@ -9,13 +9,14 @@ class BaseAffinityModel(pl.LightningModule):
     def __init__(self, token_dim=32, node_embedding_dims=[128], edge_embedding_dims=[64],
                  num_layers=2, dropout_p=0.1, normalization=True,
                  lr=1e-3, max_lr=1e-3, min_lr=1e-6, l2_norm=0.0,
-                 warmup_step_percentage=0.1, use_dynamic_schedule=False):
-        
+                 warmup_step_percentage=0.1, use_dynamic_schedule=False,
+                 embedding_type="tokenizer", cat_emb_dim=8):
+
         super().__init__()
         self.save_hyperparameters()
-        
+
         # predictions/targets accumulated over an epoch, per stage
-        
+
         self._epoch_outputs = {"val": [], "test": []}
 
         self.node_embedding_dim = node_embedding_dims[-1]
@@ -26,6 +27,8 @@ class BaseAffinityModel(pl.LightningModule):
             node_hidden_sizes=node_embedding_dims,
             edge_ligand_hidden_sizes=edge_embedding_dims,
             edge_protein_hidden_sizes=edge_embedding_dims,
+            embedding_type=embedding_type,
+            cat_emb_dim=cat_emb_dim,
         )
         
     # the prediction head MLP is built by the subclass with _build_head(), used in both models  

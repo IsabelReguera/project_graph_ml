@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from gmnbind.data.schemas import DATASET_SCHEMAS
+from gmnbind.models.features_embedding_dense import DenseFeatureEmbedding
 
 PROTEIN_NODE_SCHEMA = DATASET_SCHEMAS['protein_node']
 LIGAND_NODE_SCHEMA = DATASET_SCHEMAS['ligand_node']
@@ -81,7 +82,8 @@ class DualGraphTokenizer(nn.Module):
     """
 
     def __init__(self, token_dim,
-                 node_hidden_sizes, edge_protein_hidden_sizes, edge_ligand_hidden_sizes):
+                 node_hidden_sizes, edge_protein_hidden_sizes, edge_ligand_hidden_sizes,
+                 embedding_type="tokenizer", cat_emb_dim=8):
         """
         Args:
           token_dim: individual projection dimension for each feature.
@@ -89,18 +91,30 @@ class DualGraphTokenizer(nn.Module):
           node_hidden_sizes: list of ints for the single node MLP.
           edge_protein_hidden_sizes: list of ints for the protein edge MLP.
           edge_ligand_hidden_sizes: list of ints for the ligand edge MLP.
+          embedding_type: feature encoder to use, "tokenizer" (FeatureTokenizer)
+            or "dense" (DenseFeatureEmbedding). The two are interchangeable.
+          cat_emb_dim: categorical embedding size, used only when embedding_type="dense".
         """
         super().__init__()
-        
-        self.norm_prot_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
-        self.norm_lig_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
+
+        self.norm_prot_nodes = nn.LayerNorm(node_hidden_sizes[-1])
+        self.norm_lig_nodes = nn.LayerNorm(node_hidden_sizes[-1])
         self.norm_prot_edges = nn.LayerNorm(edge_protein_hidden_sizes[-1])
         self.norm_lig_edges  = nn.LayerNorm(edge_ligand_hidden_sizes[-1])
 
-        self.protein_node_enc = FeatureTokenizer(PROTEIN_NODE_SCHEMA, token_dim, node_hidden_sizes)
-        self.protein_edge_enc = FeatureTokenizer(PROTEIN_EDGE_SCHEMA, token_dim, edge_protein_hidden_sizes)
-        self.ligand_node_enc  = FeatureTokenizer(LIGAND_NODE_SCHEMA,  token_dim, node_hidden_sizes)
-        self.ligand_edge_enc  = FeatureTokenizer(LIGAND_EDGE_SCHEMA,  token_dim, edge_ligand_hidden_sizes)
+        if embedding_type == "tokenizer":
+            def make_enc(schema, hidden_sizes):
+                return FeatureTokenizer(schema, token_dim, mlp_hidden_layers=hidden_sizes)
+        elif embedding_type == "dense":
+            def make_enc(schema, hidden_sizes):
+                return DenseFeatureEmbedding(schema, hidden_sizes=hidden_sizes, cat_emb_dim=cat_emb_dim)
+        else:
+            raise ValueError(f"Unknown embedding_type: {embedding_type}")
+
+        self.protein_node_enc = make_enc(PROTEIN_NODE_SCHEMA, node_hidden_sizes)
+        self.protein_edge_enc = make_enc(PROTEIN_EDGE_SCHEMA, edge_protein_hidden_sizes)
+        self.ligand_node_enc  = make_enc(LIGAND_NODE_SCHEMA,  node_hidden_sizes)
+        self.ligand_edge_enc  = make_enc(LIGAND_EDGE_SCHEMA,  edge_ligand_hidden_sizes)
 
     def forward(self, prot_batch_in, lig_batch_in):
         """
