@@ -73,79 +73,6 @@ class FeatureTokenizer(nn.Module):
         return self.mlp(out) if self.mlp is not None else out
 
 
-class DenseFeatureEmbedding(nn.Module):
-    """
-    Alternative to FeatureTokenizer, selected in DualGraphTokenizer via
-    embedding_type="dense".
-
-    Instead of projecting each feature individually to token_dim and then
-    aggregating them with an MLP, this module:
-      1) Embeds every categorical feature with a small nn.Embedding
-         (dimension `cat_emb_dim`).
-      2) Keeps every continuous feature as a scalar.
-      3) Concatenates the resulting vector and passes it through a single
-         feed-forward MLP that projects it to the final hidden dimension.
-
-    Output shape matches FeatureTokenizer, so the two encoders are
-    interchangeable inside DualGraphTokenizer.
-    """
-
-    def __init__(self, schema, hidden_sizes, cat_emb_dim=8):
-        """
-        Args:
-          schema: list of dicts {'type': 'continuous' | 'categorical',
-                                 ['num_categories': int]}
-          hidden_sizes: list of ints for the MLP (same convention as
-                        FeatureTokenizer; last element is the output dim).
-          cat_emb_dim: embedding size used for every categorical feature.
-        """
-        super().__init__()
-        self.schema = schema
-
-        # Per-feature preprocessing: one Embedding per categorical feature,
-        # continuous features pass through as scalars.
-        self.cat_embeddings = nn.ModuleDict()
-        input_dim = 0
-        for i, feat in enumerate(schema):
-            if feat['type'] == 'categorical':
-                # Keys are stringified indices (ModuleDict requires string keys).
-                self.cat_embeddings[str(i)] = nn.Embedding(feat['num_categories'], cat_emb_dim)
-                input_dim += cat_emb_dim
-            elif feat['type'] == 'continuous':
-                input_dim += 1
-            else:
-                raise ValueError(f"Unknown feature type: {feat['type']}")
-
-        # Final MLP that mixes all features together and projects to hidden_sizes[-1].
-        layers = [nn.Linear(input_dim, hidden_sizes[0])]
-        for i in range(1, len(hidden_sizes)):
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(hidden_sizes[i - 1], hidden_sizes[i]))
-        self.mlp = nn.Sequential(*layers)
-
-    def forward(self, x):
-        """
-        Args:
-          x: [N, n_features] float tensor. Categorical columns are stored as
-             floats but cast to long before being passed to nn.Embedding.
-        Returns:
-          [N, hidden_sizes[-1]] tensor.
-        """
-        parts = []
-        for i, feat in enumerate(self.schema):
-            if feat['type'] == 'categorical':
-                # Lookup embedding for each categorical index.
-                parts.append(self.cat_embeddings[str(i)](x[:, i].long()))
-            else:
-                # Keep continuous feature as-is (shape [N, 1]).
-                parts.append(x[:, i:i + 1])
-
-        # Concatenate [continuous scalars + categorical embeddings] along feature dim,
-        # then project to final hidden space.
-        concat = torch.cat(parts, dim=-1)
-        return self.mlp(concat)
-
-
 class DualGraphTokenizer(nn.Module):
     """
     Tokenizes nodes and edges of both protein and ligand graphs into the same
@@ -154,8 +81,7 @@ class DualGraphTokenizer(nn.Module):
     """
 
     def __init__(self, token_dim,
-                 node_hidden_sizes, edge_protein_hidden_sizes, edge_ligand_hidden_sizes,
-                 embedding_type="tokenizer", cat_emb_dim=8):
+                 node_hidden_sizes, edge_protein_hidden_sizes, edge_ligand_hidden_sizes):
         """
         Args:
           token_dim: individual projection dimension for each feature.
@@ -163,30 +89,18 @@ class DualGraphTokenizer(nn.Module):
           node_hidden_sizes: list of ints for the single node MLP.
           edge_protein_hidden_sizes: list of ints for the protein edge MLP.
           edge_ligand_hidden_sizes: list of ints for the ligand edge MLP.
-          embedding_type: feature encoder to use, "tokenizer" (FeatureTokenizer)
-            or "dense" (DenseFeatureEmbedding). The two are interchangeable.
-          cat_emb_dim: categorical embedding size, used only when embedding_type="dense".
         """
         super().__init__()
-
-        self.norm_prot_nodes = nn.LayerNorm(node_hidden_sizes[-1])
-        self.norm_lig_nodes = nn.LayerNorm(node_hidden_sizes[-1])
+        
+        self.norm_prot_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
+        self.norm_lig_nodes = nn.LayerNorm(node_hidden_sizes[-1]) 
         self.norm_prot_edges = nn.LayerNorm(edge_protein_hidden_sizes[-1])
         self.norm_lig_edges  = nn.LayerNorm(edge_ligand_hidden_sizes[-1])
 
-        if embedding_type == "tokenizer":
-            def make_enc(schema, hidden_sizes):
-                return FeatureTokenizer(schema, token_dim, mlp_hidden_layers=hidden_sizes)
-        elif embedding_type == "dense":
-            def make_enc(schema, hidden_sizes):
-                return DenseFeatureEmbedding(schema, hidden_sizes=hidden_sizes, cat_emb_dim=cat_emb_dim)
-        else:
-            raise ValueError(f"Unknown embedding_type: {embedding_type}")
-
-        self.protein_node_enc = make_enc(PROTEIN_NODE_SCHEMA, node_hidden_sizes)
-        self.protein_edge_enc = make_enc(PROTEIN_EDGE_SCHEMA, edge_protein_hidden_sizes)
-        self.ligand_node_enc  = make_enc(LIGAND_NODE_SCHEMA,  node_hidden_sizes)
-        self.ligand_edge_enc  = make_enc(LIGAND_EDGE_SCHEMA,  edge_ligand_hidden_sizes)
+        self.protein_node_enc = FeatureTokenizer(PROTEIN_NODE_SCHEMA, token_dim, node_hidden_sizes)
+        self.protein_edge_enc = FeatureTokenizer(PROTEIN_EDGE_SCHEMA, token_dim, edge_protein_hidden_sizes)
+        self.ligand_node_enc  = FeatureTokenizer(LIGAND_NODE_SCHEMA,  token_dim, node_hidden_sizes)
+        self.ligand_edge_enc  = FeatureTokenizer(LIGAND_EDGE_SCHEMA,  token_dim, edge_ligand_hidden_sizes)
 
     def forward(self, prot_batch_in, lig_batch_in):
         """
