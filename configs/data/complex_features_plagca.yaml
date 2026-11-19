@@ -1,0 +1,56 @@
+# configs/data/complex_features_plagca.yaml
+# PLAGCA-style featurization (Shi et al., J. Biomed. Inform. 2025), for the comparison
+# with that paper. Saved in data/processed/{version}/.
+#
+# If you change anything here OR in the featurization code
+# (protein.py, ligand.py, pdbbind_dataset.py), bump `version`.
+# The exact config used for each version is stored in data/processed/{version}/meta.json.
+#
+# Differences from complex_features.yaml (our v2):
+#   protein: pocket instead of the whole protein, Cα–Cα edges at 4 Å instead of 8 Å,
+#            40D one-hot residue features instead of Meiler + b_factor + residue type
+#   ligand:  only real chemical bonds (no distance-based edges), 128D one-hot atom
+#            features and 12D one-hot bond features, no 3D distance on the edges
+#
+# NOT IMPLEMENTED YET: the one-hot feature sets below need new code in protein.py /
+# ligand.py and new schemas in schemas.py (see "missing" notes). Running
+# preprocess.py with this config today would still build the v2 node/edge features.
+
+version: v3_plagca
+index: data/index/index.csv
+structures_dir: data/raw/pdbbind_v2020/generalset
+
+protein:
+  structure: pocket             # _pocket.pdb: residues within ~10 Å of the ligand
+  granularity: residue          # one node per residue (Cα)
+  edges:
+    peptide_bonds: false        # edges come from the distance threshold only
+    distance_threshold: 4.0     # Å, Cα–Cα contacts
+    long_interaction_threshold: 0
+  node_features:                # 40D one-hot per residue (PLAGCA, from DeepDTAF / CAPLA)
+    - residue_type_onehot       # sequence representation
+    - secondary_structure       # MISSING in our pipeline (needs DSSP via graphein)
+    - physicochemical_onehot    # MISSING: one-hot physico-chemical classes, not Meiler values
+  # dropped vs our v2: meiler (continuous), b_factor
+
+ligand:
+  source: sdf                   # crystal pose from _ligand.sdf
+  fallback_to_smiles: false     # exclude the complex instead of rebuilding the pose from SMILES
+  add_hydrogens: false          # heavy-atom graph
+  distance_cutoff: null         # no virtual edges: only real chemical bonds
+  node_features:                # 128D one-hot per atom (PLAGCA)
+    - atomic_number
+    - degree
+    - total_hs
+    - formal_charge
+    - aromatic
+    - hybridization
+    - chirality                 # MISSING in our pipeline
+    - atomic_mass               # MISSING in our pipeline
+  # dropped vs our v2: in_ring (not used by PLAGCA)
+  edge_features:                # 12D one-hot per bond (PLAGCA)
+    - bond_type                 # single, double, triple, aromatic
+    - conjugated
+    - in_ring                   # MISSING in our pipeline
+    - stereo                    # MISSING in our pipeline
+  # dropped vs our v2: distance (not used by PLAGCA)

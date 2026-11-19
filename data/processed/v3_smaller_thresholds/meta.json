@@ -1,0 +1,44 @@
+{
+  "version": "v3_smaller_thresholds",
+  "created": "2026-11-18T12:52:43",
+  "git_commit": "fbd6a62-dirty",
+  "config": {
+    "version": "v3_smaller_thresholds",
+    "index": "data/index/index.csv",
+    "structures_dir": "data/raw/pdbbind_v2020/generalset",
+    "protein": {
+      "structure": "protein",
+      "granularity": "residue",
+      "edges": {
+        "peptide_bonds": true,
+        "distance_threshold": 6.5,
+        "long_interaction_threshold": 0
+      },
+      "node_features": [
+        "meiler",
+        "b_factor",
+        "residue_type"
+      ]
+    },
+    "ligand": {
+      "source": "sdf",
+      "fallback_to_smiles": false,
+      "add_hydrogens": false,
+      "distance_cutoff": 3.5,
+      "node_features": [
+        "atomic_number",
+        "degree",
+        "total_hs",
+        "formal_charge",
+        "aromatic",
+        "in_ring",
+        "hybridization"
+      ],
+      "edge_features": [
+        "bond_type",
+        "conjugated",
+        "distance"
+      ]
+    }
+  }
+}
