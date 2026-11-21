@@ -49,7 +49,7 @@ torch.set_float32_matmul_precision("medium")
 # --- experiment grid -------------------------------------------------------
 DATASET_TAG     = "v2"
 BASE_CONFIG     = REPO_ROOT / "configs" / "gmn.yaml"   # hyperparameters shared by all runs
-SEEDS           = [42, 47, 51, 53, 59]
+SEEDS           = [42]   # single seed for v2 (full dataset is heavy); swap for 47/51/53/59 to match another v1 seed
 MODEL_TYPES     = ["baseline", "gmn"]
 EMBEDDING_TYPES = ["tokenizer", "dense"]
 EPOCHS          = 1000    # same as the v1 experiment; early stopping does the real cutoff
