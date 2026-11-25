@@ -126,6 +126,15 @@ def load_ckpt(model_type, embedding_type, seed):
 # -------------------- Main --------------------
 def main():
     pdb_codes = PDB_CODES or pick_pdb_codes(3)
+    # keep only codes whose protein AND ligand .pt both exist in v2 (skip the rest)
+    existing = [c for c in pdb_codes
+                if (PROCESSED / f"protein_{c}.pt").exists() and (PROCESSED / f"ligand_{c}.pt").exists()]
+    missing = [c for c in pdb_codes if c not in existing]
+    if missing:
+        print(f"WARNING: {missing} not found in {PROCESSED}, skipped")
+    pdb_codes = existing
+    if not pdb_codes:
+        raise RuntimeError(f"None of the requested PDB codes exist in {PROCESSED}.")
     print(f"Using PDB codes: {pdb_codes}")
 
     # sim_mats[config_idx][pdb_idx] -> (S_prot_mean, S_lig_mean)
